@@ -1,6 +1,6 @@
 ; Build with: ISCC installer\SimpleSpeech.iss
 #define MyAppName "SimpleSpeech"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Deepak"
 #define MyAppURL "https://github.com/Deepak-80085/simplespeech"
 #define MyAppExeName "SimpleSpeech.exe"

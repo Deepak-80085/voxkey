@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 — 2026-07-11
+
+- Fix Windows installer packaging by including the faster-whisper Silero VAD ONNX asset required for voice activity detection.
+
 ## 1.0.0 — 2026-07-11
 
 - First Windows installer release.

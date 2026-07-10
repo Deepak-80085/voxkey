@@ -1,11 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
+# faster-whisper loads this VAD ONNX model by package-relative path at runtime.
+# PyInstaller does not collect it automatically, so package it explicitly.
+datas = [('asset', 'asset')] + collect_data_files(
+    'faster_whisper', includes=['assets/*.onnx']
+)
+
 
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('asset', 'asset')],
+    datas=datas,
     hiddenimports=['pystray', 'PIL.Image'],
     hookspath=[],
     hooksconfig={},
