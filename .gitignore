@@ -1,4 +1,25 @@
+# Python
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+.venv/
 venv/
+.env
+
+# Build outputs
+build/
+dist/
+release/
+*.spec.bak
+
+# User/runtime data
+*.wav
+*.db
+*.sqlite
+*.sqlite3
+logs/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

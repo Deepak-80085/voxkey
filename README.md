@@ -1,71 +1,114 @@
 # SimpleSpeech
 
-Offline voice-to-text tool (Python) with:
-- local transcription (`faster-whisper`)
-- optional local refinement (`Ollama`)
-- adaptive correction memory (`SQLite`)
-- global hotkeys for quick paste
+**Offline push-to-talk dictation for Windows.** Hold a hotkey, speak, release it, and SimpleSpeech pastes the transcript into the app you are already using.
 
-## Current Features
-- Hold `Alt` (left or right) to record and paste **raw** output
-- Hold `Alt + Shift` to record and paste **refined** output
-- Global paste into current cursor target
-- Dictionary + correction memory in `simplespeech_memory.db`
-- Calibration workflow (CLI mode)
+## Download and install
 
-## Requirements
-- Python 3.11+
-- Windows recommended (current input flow is optimized/tested there)
-- Microphone access
-- GPU recommended for faster transcription
-- Ollama running locally if you want refinement
+1. Open the latest [GitHub Release](https://github.com/Deepak-80085/simplespeech/releases/latest).
+2. Download **`SimpleSpeech-Setup-<version>.exe`**.
+3. Run the installer and launch SimpleSpeech.
+4. Click in any editable field—Notepad, VS Code, a browser, Slack, etc.—then dictate.
 
-Install deps:
+The installer creates a Start Menu entry, an uninstaller, and starts the app in the Windows system tray. No Python, terminal, ZIP extraction, or account is required.
 
-```powershell
-.\venv\Scripts\pip install -r requirements.txt
-```
+> **Windows SmartScreen:** a new unsigned open-source Windows application may display an “Unknown publisher” warning. Only download installers from this repository's GitHub Releases page. Release checksums are published with each release.
 
-## Run
-Default hotkey mode:
+## Use
 
-```powershell
-.\venv\Scripts\python app.py
-```
+| Action | Result |
+| --- | --- |
+| Hold **Alt** | Record and paste the raw local transcript. |
+| Hold **Alt + Shift** | Record, transcribe locally, then optionally clean the text with local Ollama before pasting. |
+| Tray icon → Pause Dictation | Temporarily disable recording. |
+| Tray icon → Open Logs | Open local diagnostics if something fails. |
+| Tray icon → Quit | Stop SimpleSpeech. |
 
-Legacy CLI mode:
+Hold the hotkey for about 0.3 seconds before speaking. Release **Alt** to finish. The app restores the window that was active when recording began, then pastes the result.
 
-```powershell
-.\venv\Scripts\python app.py --cli
-```
+## Privacy and local processing
 
-## Hotkey Behavior
-- Recording starts after holding Alt for ~`0.28s`
-- If Alt is used with other non-modifier keys (for normal shortcuts), that Alt cycle is ignored
-- Release Alt to stop and process
+- Raw dictation uses **faster-whisper** on your computer. Audio is not sent to a transcription API.
+- The Whisper model is downloaded once on first use and stored in the normal local model cache. Subsequent transcription works offline.
+- Temporary recordings are created under your per-user SimpleSpeech data directory and deleted after processing.
+- **Refined mode is optional.** It sends text only to the Ollama server configured on your own machine (`http://localhost:11434` by default); it never calls a hosted LLM service.
+- SimpleSpeech writes a small rotating diagnostic log at `%LOCALAPPDATA%\SimpleSpeech\simplespeech.log`. It does not retain transcripts.
 
-## Ollama Refiner
-`refiner.py` calls local Ollama endpoint:
-- URL: `http://localhost:11434/api/generate` (default)
-- Model env var: `OLLAMA_MODEL`
+## System requirements
 
-Example:
+- Windows 10 or Windows 11
+- A working microphone
+- Internet only for the first Whisper-model download (unless its cache is already present)
+- NVIDIA GPU optional; SimpleSpeech automatically falls back to CPU
+- Ollama plus `qwen3.5:0.8b` only for **Alt + Shift** refined mode
+
+SimpleSpeech is intentionally **Windows-first** today. macOS, Linux, and Android are not supported releases yet.
+
+## Refined mode (optional)
+
+Raw dictation works without Ollama. To enable refinement:
 
 ```powershell
-$env:OLLAMA_MODEL="qwen3.5-8bit-fixed"
-.\venv\Scripts\python app.py
+ollama pull qwen3.5:0.8b
+ollama serve
 ```
 
-If Ollama is unavailable or output is invalid, app falls back to raw text.
+If Ollama is unavailable, SimpleSpeech safely pastes the raw local transcript and shows a brief status message.
 
-## Project Files
-- `app.py` - main app (hotkey + CLI flows)
-- `transcriber.py` - whisper wrapper
-- `refiner.py` - Ollama refinement logic
-- `database.py` - SQLite schema + persistence
-- `calibration.py` - calibration and auto-learn logic
-- `requirements.txt` - minimal pinned runtime deps
+The refiner model can be changed for local development with:
 
-## Notes
-- Current hotkey mode prints RAW/REFINED text in terminal for testing (`PRINT_HOTKEY_DEBUG_TRANSCRIPTS` in `app.py`).
-- Calibration and dictionary management are currently easiest through `--cli`.
+```powershell
+$env:OLLAMA_MODEL = "qwen3.5:0.8b"
+```
+
+## Development
+
+```powershell
+# Windows PowerShell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python app.py
+```
+
+### Build the desktop application
+
+```powershell
+pip install pyinstaller==6.19.0
+pyinstaller --clean --noconfirm SimpleSpeech.spec
+```
+
+The application folder is created at `dist\SimpleSpeech\`. It is an input to the installer, not the end-user distribution format.
+
+### Build the one-click installer
+
+Install [Inno Setup](https://jrsoftware.org/isinfo.php), then run:
+
+```powershell
+ISCC installer\SimpleSpeech.iss
+```
+
+This creates `release\SimpleSpeech-Setup-1.0.0.exe`.
+
+## Architecture
+
+```text
+app.py          hotkey workflow, recording, clipboard paste, indicator, tray menu
+transcriber.py  local faster-whisper model loading and GPU-to-CPU fallback
+refiner.py      optional local Ollama/qwen3.5:0.8b cleanup
+runtime.py      per-user application paths and bounded diagnostic logging
+installer/      Inno Setup script for a normal Windows installer
+```
+
+## Troubleshooting
+
+- **No transcript / microphone error:** check Windows Settings → Privacy & security → Microphone and confirm the selected/default input device works.
+- **Slow first launch:** the local Whisper model may be downloading or loading for the first time.
+- **GPU unavailable:** this is safe; SimpleSpeech uses CPU automatically.
+- **Alt shortcut conflict:** SimpleSpeech ignores Alt cycles used with another non-modifier key before recording starts. Use the tray menu to pause it if needed.
+- **Refined mode pastes raw text:** make sure Ollama is running and `qwen3.5:0.8b` is installed. Raw dictation is unaffected.
+- **Paste fails in an elevated application:** run SimpleSpeech with the same Windows privilege level as the target app.
+
+## License
+
+[MIT](LICENSE)

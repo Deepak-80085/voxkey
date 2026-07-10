@@ -4,7 +4,7 @@ import re
 import requests
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-MODEL_ID = os.getenv("OLLAMA_MODEL", "qwem3.5-8_bit")
+MODEL_ID = os.getenv("OLLAMA_MODEL", "qwen3.5:0.8b")
 SYSTEM_PROMPT = (
     "You are a transcript cleaner.\n"
     "Rewrite the text into clean written English while preserving exact meaning.\n"
@@ -70,16 +70,17 @@ class Refiner:
         return self._clean_output(response.json().get("response", ""))
 
     def refine(self, raw_transcript):
+        """Return ``(text, available)``; raw text is preserved on local failure."""
         if not raw_transcript or not raw_transcript.strip():
-            return raw_transcript
+            return raw_transcript, True
 
         try:
             cleaned = self._call_ollama(MODEL_ID, raw_transcript)
             if not re.search(r"[A-Za-z0-9]", cleaned or ""):
-                return raw_transcript
-            return cleaned or raw_transcript
+                return raw_transcript, True
+            return cleaned or raw_transcript, True
         except requests.exceptions.RequestException as exc:
             if not self._warned_unavailable:
                 print(f"[Refiner warning] Ollama unavailable: {exc}")
                 self._warned_unavailable = True
-            return raw_transcript
+            return raw_transcript, False
