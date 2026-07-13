@@ -141,9 +141,10 @@ class Recorder:
 class HoldToDictateService:
     """Single Alt hold hotkey; records only when VoxKey is Ready."""
 
-    def __init__(self, controller: VoxKeyController, runtime: VoxKeyRuntime):
+    def __init__(self, controller: VoxKeyController, runtime: VoxKeyRuntime, logger=None):
         self.controller = controller
         self.runtime = runtime
+        self.logger = logger or runtime.logger()
         self.recorder = Recorder(runtime.recordings_dir())
         self.alt_down = False
         self.recording = False
@@ -174,6 +175,7 @@ class HoldToDictateService:
                 self.alt_started_at = time.monotonic()
                 self.ignore_cycle = False
                 self.paste_target_hwnd = get_foreground_window_handle()
+                self.logger.info("Alt pressed; paste target=%s", self.paste_target_hwnd)
         elif self.alt_down and not self.recording:
             self.ignore_cycle = True
 
@@ -187,8 +189,11 @@ class HoldToDictateService:
         self.recording = False
         target_hwnd, self.paste_target_hwnd = self.paste_target_hwnd, None
         try:
-            self.jobs.put((self.recorder.stop_and_save(), target_hwnd))
+            audio_path = self.recorder.stop_and_save()
+            self.logger.info("Recording saved: %s; target=%s", audio_path, target_hwnd)
+            self.jobs.put((audio_path, target_hwnd))
         except Exception as exc:
+            self.logger.exception("Recording stop failed")
             self.controller._set_state(AppState.NEEDS_REPAIR, f"Microphone needs repair: {exc}")
 
     def tick(self) -> None:
@@ -203,8 +208,10 @@ class HoldToDictateService:
             try:
                 self.recording = self.recorder.start()
                 if self.recording:
+                    self.logger.info("Recording started")
                     self.controller._set_state(AppState.LISTENING)
             except Exception as exc:
+                self.logger.exception("Recording start failed")
                 self.controller._set_state(AppState.NEEDS_REPAIR, f"Microphone needs repair: {exc}")
 
     def _work(self) -> None:
@@ -214,10 +221,17 @@ class HoldToDictateService:
                 return
             audio_path, target_hwnd = job
             try:
-                self.controller.process_audio(audio_path, target_hwnd=target_hwnd)
+                self.logger.info("Processing recording: %s", audio_path)
+                pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd)
+                self.logger.info("Recording processed; pasted=%s", pasted)
+            except Exception:
+                self.logger.exception("Unexpected worker failure")
             finally:
+                # Preserve the most recent capture for diagnostics; replace it on the next attempt.
                 try:
-                    os.remove(audio_path)
+                    latest = self.runtime.data_dir() / "last-dictation.wav"
+                    os.replace(audio_path, latest)
+                    self.logger.info("Diagnostic recording retained: %s", latest)
                 except OSError:
                     pass
 
@@ -231,10 +245,12 @@ def main() -> None:
         runtime, vocabulary_provider=lambda: runtime.load_settings()["vocabulary"]
     )
     writer = WritingModelClient(settings["ollama_model"])
-    controller = VoxKeyController(speech, writer, paste=paste_polished_text)
+    logger = runtime.logger()
+    logger.info("VoxKey starting")
+    controller = VoxKeyController(speech, writer, paste=paste_polished_text, logger=logger)
     controller.start()
     center = VoxKeyControlCenter(controller, runtime)
-    service = HoldToDictateService(controller, runtime)
+    service = HoldToDictateService(controller, runtime, logger=logger)
     service.start()
 
     try:

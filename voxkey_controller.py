@@ -9,8 +9,9 @@ from voxkey_runtime import AppState
 
 
 class VoxKeyController:
-    def __init__(self, speech, writer, paste: Callable[..., bool], on_state=None):
+    def __init__(self, speech, writer, paste: Callable[..., bool], on_state=None, logger=None):
         self.speech = speech
+        self.logger = logger
         self.writer = writer
         self.paste = paste
         self.on_state = on_state or (lambda _state, _reason: None)
@@ -18,6 +19,8 @@ class VoxKeyController:
         self.reason = None
 
     def _set_state(self, state: AppState, reason: str | None = None) -> None:
+        if self.logger:
+            self.logger.info("State: %s; reason=%s", state.value, reason)
         self.state = state
         self.reason = reason
         self.on_state(state, reason)
@@ -55,19 +58,27 @@ class VoxKeyController:
         try:
             self._set_state(AppState.TRANSCRIBING)
             transcript = self.speech.transcribe(audio_path)
+            if self.logger:
+                self.logger.info("Transcription completed; chars=%d", len(transcript.strip()))
             if not transcript.strip():
                 self._set_state(AppState.READY)
                 return False
 
             self._set_state(AppState.POLISHING)
             polished = self.writer.polish(transcript)
+            if self.logger:
+                self.logger.info("Polishing completed; chars=%d", len(polished.strip()))
             if not polished.strip():
                 self._set_state(AppState.NEEDS_REPAIR, "Local writer returned no text")
                 return False
 
             pasted = self.paste(polished, target_hwnd=target_hwnd)
+            if self.logger:
+                self.logger.info("Paste attempted; success=%s; target=%s", pasted, target_hwnd)
             self._set_state(AppState.READY)
             return bool(pasted)
         except Exception as exc:
+            if self.logger:
+                self.logger.exception("Dictation processing failed")
             self._set_state(AppState.NEEDS_REPAIR, str(exc) or "Dictation needs repair")
             return False
