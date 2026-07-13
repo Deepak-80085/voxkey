@@ -4,8 +4,8 @@ Run this checklist on a Windows machine or a separate Windows account before pub
 
 ## Install and tray
 
-1. Install `SimpleSpeech-Setup-1.0.2.exe`. Confirm the Start Menu shortcut, Windows Apps uninstall entry, and SimpleSpeech tray icon appear.
-2. Open `%LOCALAPPDATA%\Programs\SimpleSpeech\_internal\PIL`. Confirm it contains an `_imagingtk*.pyd` file. The build pipeline verifies this too.
+1. Install `SimpleSpeech-Setup-1.0.2.exe`. Confirm the Start Menu shortcut, Windows Apps uninstall entry, and SimpleSpeech tray icon appear. Wait for startup to finish and confirm no Windows "Unhandled exception in script" dialog appears.
+2. Open `%LOCALAPPDATA%\Programs\SimpleSpeech\_internal\PIL`. Confirm it contains an `_imagingtk*.pyd` file. Confirm `%LOCALAPPDATA%\Programs\SimpleSpeech\_internal\faster_whisper\assets\silero_vad_v6.onnx` exists. The build pipeline verifies both too.
 
 ## Dictation workflow
 
