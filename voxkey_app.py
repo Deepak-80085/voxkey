@@ -26,7 +26,19 @@ SAMPLE_RATE = 16_000
 HOLD_TRIGGER_S = 0.28
 IS_WINDOWS = os.name == "nt"
 _user32 = ctypes.windll.user32 if IS_WINDOWS else None
+_kernel32 = ctypes.windll.kernel32 if IS_WINDOWS else None
 SW_RESTORE = 9
+_INSTANCE_MUTEX_NAME = "Local\\VoxKeySingleInstance"
+_instance_mutex_handle = None
+
+
+def claim_single_instance() -> bool:
+    """Allow exactly one VoxKey process per Windows user session."""
+    global _instance_mutex_handle
+    if _kernel32 is None:
+        return True
+    _instance_mutex_handle = _kernel32.CreateMutexW(None, False, _INSTANCE_MUTEX_NAME)
+    return bool(_instance_mutex_handle) and _kernel32.GetLastError() != 183
 
 
 def get_foreground_window_handle() -> int | None:
@@ -211,6 +223,8 @@ class HoldToDictateService:
 
 
 def main() -> None:
+    if not claim_single_instance():
+        return
     runtime = VoxKeyRuntime()
     settings = runtime.load_settings()
     speech = SpeechModelManager(

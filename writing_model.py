@@ -62,8 +62,14 @@ class WritingModelClient:
         try:
             response = self.post(
                 f"{self.base_url}/api/generate",
-                json={"model": self.model_name, "prompt": prompt, "stream": False},
-                timeout=45,
+                json={
+                    "model": self.model_name,
+                    "prompt": prompt,
+                    "stream": False,
+                    "think": False,
+                    "options": {"num_predict": 120, "temperature": 0},
+                },
+                timeout=20,
             )
             response.raise_for_status()
             polished = str(response.json().get("response", "")).strip()

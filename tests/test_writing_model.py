@@ -41,6 +41,8 @@ class WritingModelTests(unittest.TestCase):
         payload = request.call_args.kwargs["json"]
         self.assertIn("Preserve names, numbers, facts, and meaning", payload["prompt"])
         self.assertTrue(payload["stream"] is False)
+        self.assertFalse(payload["think"])
+        self.assertEqual(payload["options"]["num_predict"], 120)
 
     def test_empty_writer_output_is_unavailable_not_raw_text(self):
         request = Mock(return_value=FakeResponse({"response": "   "}))
