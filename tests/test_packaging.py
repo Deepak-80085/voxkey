@@ -38,6 +38,16 @@ class PackagingSpecTests(unittest.TestCase):
         self.assertIn("PIL.ImageTk", contents)
         self.assertIn("PIL._imagingtk", contents)
 
+    def test_installer_uses_stable_per_user_upgrade_identity(self):
+        installer = Path(__file__).parents[1] / "installer" / "SimpleSpeech.iss"
+        contents = installer.read_text(encoding="utf-8")
+
+        self.assertIn('#define MyAppVersion "1.0.2"', contents)
+        self.assertIn('AppId={{3E4567F6-0A13-4F53-AE91-C135AE8E869B}', contents)
+        self.assertIn('DefaultDirName={localappdata}\\Programs\\{#MyAppName}', contents)
+        self.assertNotIn('SimpleSpeech\\recordings', contents)
+        self.assertNotIn('simplespeech.log', contents)
+
     def test_frozen_validation_reports_missing_pillow_tk_bridge(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             app_dir = Path(temporary_directory)

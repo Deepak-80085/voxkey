@@ -88,7 +88,9 @@ Install [Inno Setup](https://jrsoftware.org/isinfo.php), then run:
 ISCC installer\SimpleSpeech.iss
 ```
 
-This creates `release\SimpleSpeech-Setup-1.0.0.exe`.
+This creates `release\SimpleSpeech-Setup-1.0.2.exe`.
+
+Upgrades replace the installed program files under `%LOCALAPPDATA%\Programs\SimpleSpeech` while preserving `%LOCALAPPDATA%\SimpleSpeech`, including its log and temporary-recording folder. Uninstall removes the program files and intentionally preserves that per-user diagnostic data.
 
 ## Architecture
 
@@ -108,6 +110,9 @@ installer/      Inno Setup script for a normal Windows installer
 - **Alt shortcut conflict:** SimpleSpeech ignores Alt cycles used with another non-modifier key before recording starts. Use the tray menu to pause it if needed.
 - **Refined mode pastes raw text:** make sure Ollama is running and `qwen3.5:0.8b` is installed. Raw dictation is unaffected.
 - **Paste fails in an elevated application:** run SimpleSpeech with the same Windows privilege level as the target app.
+- **Status overlay error:** install the current release; it includes Pillow’s Tk runtime files required by the status indicator.
+
+Before publishing a release, run the [Windows release smoke-test checklist](docs/windows-release-smoke-test.md) on a Windows machine or separate Windows account.
 
 ## License
 

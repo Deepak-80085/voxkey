@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 — 2026-07-11
+
+- Fix Windows installer packaging by explicitly bundling Pillow’s `ImageTk` module and native `_imagingtk` bridge required by the status overlay.
+- Verify frozen release artifacts contain the Silero VAD model and required Pillow/Tk files before installer creation.
+
 ## 1.0.1 — 2026-07-11
 
 - Fix Windows installer packaging by including the faster-whisper Silero VAD ONNX asset required for voice activity detection.
