@@ -20,6 +20,22 @@ class SpeechModelTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def test_ollama_cuda_runtime_directories_are_added_before_gpu_detection(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "Programs" / "Ollama" / "lib" / "ollama"
+            (base / "cuda_v12").mkdir(parents=True)
+            (base / "mlx_cuda_v13").mkdir(parents=True)
+            runtime = Mock()
+            runtime.models_dir.return_value = Path(temp_dir) / "models"
+            runtime.logger.return_value = Mock()
+            handles = []
+
+            with patch.dict("os.environ", {"LOCALAPPDATA": temp_dir}, clear=False):
+                manager = SpeechModelManager(runtime, dll_directory_adder=handles.append)
+                manager._configure_cuda_runtime_search_path()
+
+        self.assertEqual(handles, [str(base / "cuda_v12"), str(base / "mlx_cuda_v13")])
+
     def test_gpu_load_failure_retries_same_small_en_model_on_cpu(self):
         cpu_model = Mock()
         loader = Mock(side_effect=[RuntimeError("GPU unavailable"), cpu_model])

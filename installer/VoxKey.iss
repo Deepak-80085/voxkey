@@ -1,6 +1,6 @@
 ; Build with: ISCC installer\VoxKey.iss
 #define MyAppName "VoxKey"
-#define MyAppVersion "2.0.4-test"
+#define MyAppVersion "2.0.5-test"
 #define MyAppPublisher "Deepak"
 #define MyAppURL "https://github.com/Deepak-80085/voxkey"
 #define MyAppExeName "VoxKey.exe"

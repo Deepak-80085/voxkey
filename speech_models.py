@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -34,12 +35,15 @@ class SpeechModelManager:
         model_loader=WhisperModel,
         downloader=snapshot_download,
         cuda_checker=None,
+        dll_directory_adder=None,
     ):
         self.runtime = runtime
         self.vocabulary_provider = vocabulary_provider or (lambda: [])
         self.model_loader = model_loader
         self.downloader = downloader
         self.cuda_checker = cuda_checker or self._missing_cuda_runtime
+        self.dll_directory_adder = dll_directory_adder or getattr(os, "add_dll_directory", None)
+        self._dll_directory_handles = []
         self.model = None
         self.device = None
         self.logger = runtime.logger()
@@ -56,6 +60,22 @@ class SpeechModelManager:
             local_dir=str(model_dir),
         )
         return model_dir
+
+    def _configure_cuda_runtime_search_path(self) -> None:
+        """Reuse Ollama's installed CUDA runtime when it is available locally."""
+        if not self.dll_directory_adder:
+            return
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if not local_app_data:
+            return
+        runtime_root = Path(local_app_data) / "Programs" / "Ollama" / "lib" / "ollama"
+        for directory_name in ("cuda_v12", "mlx_cuda_v13"):
+            directory = runtime_root / directory_name
+            if directory.is_dir():
+                try:
+                    self._dll_directory_handles.append(self.dll_directory_adder(str(directory)))
+                except OSError:
+                    self.logger.exception("Could not add Ollama CUDA runtime directory: %s", directory)
 
     @staticmethod
     def _missing_cuda_runtime() -> list[str]:
@@ -87,6 +107,7 @@ class SpeechModelManager:
             if not self._valid_model_directory(model_dir):
                 raise RuntimeError("VoxKey speech model is missing or empty")
 
+            self._configure_cuda_runtime_search_path()
             if not self.cuda_checker():
                 try:
                     self.model = self._load(model_dir, "cuda", "int8_float16")
