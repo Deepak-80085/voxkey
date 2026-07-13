@@ -6,6 +6,7 @@ venv/
 .env
 
 # Build outputs
+.worktrees/
 build/
 dist/
 release/
