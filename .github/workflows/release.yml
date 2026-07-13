@@ -27,6 +27,9 @@ jobs:
       - name: Build application folder
         run: pyinstaller --clean --noconfirm SimpleSpeech.spec
 
+      - name: Verify frozen runtime dependencies
+        run: python tests/test_packaging.py dist/SimpleSpeech
+
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
