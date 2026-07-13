@@ -50,7 +50,7 @@ class VoxKeyController:
         return self.state is AppState.READY
 
     def process_audio(self, audio_path: Path, target_hwnd=None) -> bool:
-        if not self.can_dictate():
+        if self.state not in (AppState.READY, AppState.LISTENING):
             return False
         try:
             self._set_state(AppState.TRANSCRIBING)
