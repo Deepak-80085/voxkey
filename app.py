@@ -54,6 +54,7 @@ def play_asset_sound(name: str) -> None:
     threading.Thread(target=_play, daemon=True).start()
 from refiner import Refiner
 from runtime import configure_logging, recordings_dir
+from startup import start_transcriber
 from transcriber import Transcriber
 
 logger = configure_logging()
@@ -980,7 +981,11 @@ def run_hotkey_mode():
     print(f"Hold Alt+Shift (~{ALT_HOLD_TRIGGER_S:.2f}s) = refined transcript paste")
     print("Works with left or right Alt/Shift. Press Ctrl+C to quit.\n")
 
-    transcriber = Transcriber()
+    transcriber, startup_error = start_transcriber(Transcriber, logger)
+    if startup_error:
+        print(f"[SimpleSpeech] {startup_error}. See logs for details.")
+        return
+
     refiner = Refiner()
 
     indicator = FloatingStatusIndicator()
