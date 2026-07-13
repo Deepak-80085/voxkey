@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import queue
 import threading
@@ -23,6 +24,30 @@ from writing_model import WritingModelClient
 
 SAMPLE_RATE = 16_000
 HOLD_TRIGGER_S = 0.28
+IS_WINDOWS = os.name == "nt"
+_user32 = ctypes.windll.user32 if IS_WINDOWS else None
+SW_RESTORE = 9
+
+
+def get_foreground_window_handle() -> int | None:
+    if _user32 is None:
+        return None
+    try:
+        handle = _user32.GetForegroundWindow()
+    except Exception:
+        return None
+    return int(handle) if handle else None
+
+
+def restore_foreground_window_handle(target_hwnd: int | None) -> None:
+    if _user32 is None or not target_hwnd:
+        return
+    try:
+        if _user32.IsIconic(target_hwnd):
+            _user32.ShowWindow(target_hwnd, SW_RESTORE)
+        _user32.SetForegroundWindow(target_hwnd)
+    except Exception:
+        pass
 
 
 def paste_polished_text(text: str, target_hwnd=None) -> bool:
@@ -39,6 +64,9 @@ def paste_polished_text(text: str, target_hwnd=None) -> bool:
         pass
     pyperclip.copy(payload)
     time.sleep(0.04)
+    if target_hwnd:
+        restore_foreground_window_handle(target_hwnd)
+        time.sleep(0.10)
     controller = keyboard.Controller()
     controller.press(keyboard.Key.ctrl)
     controller.press("v")
@@ -109,6 +137,7 @@ class HoldToDictateService:
         self.recording = False
         self.alt_started_at = None
         self.ignore_cycle = False
+        self.paste_target_hwnd = None
         self.listener = None
         self.jobs = queue.Queue()
         self.worker = threading.Thread(target=self._work, daemon=True)
@@ -132,6 +161,7 @@ class HoldToDictateService:
                 self.alt_down = True
                 self.alt_started_at = time.monotonic()
                 self.ignore_cycle = False
+                self.paste_target_hwnd = get_foreground_window_handle()
         elif self.alt_down and not self.recording:
             self.ignore_cycle = True
 
@@ -143,8 +173,9 @@ class HoldToDictateService:
         if not self.recording:
             return
         self.recording = False
+        target_hwnd, self.paste_target_hwnd = self.paste_target_hwnd, None
         try:
-            self.jobs.put(self.recorder.stop_and_save())
+            self.jobs.put((self.recorder.stop_and_save(), target_hwnd))
         except Exception as exc:
             self.controller._set_state(AppState.NEEDS_REPAIR, f"Microphone needs repair: {exc}")
 
@@ -166,11 +197,12 @@ class HoldToDictateService:
 
     def _work(self) -> None:
         while True:
-            audio_path = self.jobs.get()
-            if audio_path is None:
+            job = self.jobs.get()
+            if job is None:
                 return
+            audio_path, target_hwnd = job
             try:
-                self.controller.process_audio(audio_path)
+                self.controller.process_audio(audio_path, target_hwnd=target_hwnd)
             finally:
                 try:
                     os.remove(audio_path)
