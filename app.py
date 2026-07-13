@@ -714,7 +714,8 @@ class HotkeyDictationService:
             self._indicator.hide()
         with self._jobs_lock:
             self._jobs.put(None)
-        self._worker.join(timeout=5)
+        if self._worker.is_alive():
+            self._worker.join(timeout=5)
 
     def _on_press(self, key):
         with self._state_lock:
