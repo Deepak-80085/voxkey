@@ -39,7 +39,15 @@ class SpeechModelTests(unittest.TestCase):
         self.assertEqual(loader.call_args_list[1].kwargs["device"], "cpu")
         self.assertNotIn("base.en", str(loader.call_args_list))
 
+    def test_existing_valid_model_is_not_downloaded_again(self):
+        downloader = Mock()
+        manager = SpeechModelManager(self.runtime, downloader=downloader)
+
+        self.assertEqual(manager._ensure_model(), self.model_dir)
+        downloader.assert_not_called()
+
     def test_model_download_is_directed_to_voxkey_owned_speech_directory(self):
+        (self.model_dir / "model.bin").unlink()
         downloader = Mock()
         manager = SpeechModelManager(self.runtime, downloader=downloader)
 

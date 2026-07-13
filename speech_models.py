@@ -49,6 +49,8 @@ class SpeechModelManager:
 
     def _ensure_model(self) -> Path:
         model_dir = self._model_directory()
+        if self._valid_model_directory(model_dir):
+            return model_dir
         self.downloader(
             repo_id=MODEL_REPOSITORY,
             local_dir=str(model_dir),
