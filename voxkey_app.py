@@ -24,6 +24,8 @@ from writing_model import WritingModelClient
 
 SAMPLE_RATE = 16_000
 HOLD_TRIGGER_S = 0.28
+# Right Ctrl is deliberately chosen: Alt activates Windows access-key menus in target apps.
+DICTATION_KEYS = (keyboard.Key.ctrl_r,)
 IS_WINDOWS = os.name == "nt"
 _user32 = ctypes.windll.user32 if IS_WINDOWS else None
 _kernel32 = ctypes.windll.kernel32 if IS_WINDOWS else None
@@ -80,6 +82,9 @@ def paste_polished_text(text: str, target_hwnd=None) -> bool:
         restore_foreground_window_handle(target_hwnd)
         time.sleep(0.10)
     controller = keyboard.Controller()
+    # Alt was removed as a trigger. Do not synthesize releases for Right Ctrl:
+    # pynput can emit a literal "r" when doing so on some Windows layouts.
+    time.sleep(0.03)
     controller.press(keyboard.Key.ctrl)
     controller.press("v")
     controller.release("v")
@@ -139,16 +144,16 @@ class Recorder:
 
 
 class HoldToDictateService:
-    """Single Alt hold hotkey; records only when VoxKey is Ready."""
+    """Single Right Ctrl hold hotkey; records only when VoxKey is Ready."""
 
     def __init__(self, controller: VoxKeyController, runtime: VoxKeyRuntime, logger=None):
         self.controller = controller
         self.runtime = runtime
         self.logger = logger or runtime.logger()
         self.recorder = Recorder(runtime.recordings_dir())
-        self.alt_down = False
+        self.hotkey_down = False
         self.recording = False
-        self.alt_started_at = None
+        self.hotkey_started_at = None
         self.ignore_cycle = False
         self.paste_target_hwnd = None
         self.listener = None
@@ -169,21 +174,21 @@ class HoldToDictateService:
             self.worker.join(timeout=5)
 
     def _press(self, key) -> None:
-        if key in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r):
-            if not self.alt_down:
-                self.alt_down = True
-                self.alt_started_at = time.monotonic()
+        if key in DICTATION_KEYS:
+            if not self.hotkey_down:
+                self.hotkey_down = True
+                self.hotkey_started_at = time.monotonic()
                 self.ignore_cycle = False
                 self.paste_target_hwnd = get_foreground_window_handle()
-                self.logger.info("Alt pressed; paste target=%s", self.paste_target_hwnd)
-        elif self.alt_down and not self.recording:
+                self.logger.info("Right Ctrl pressed; paste target=%s", self.paste_target_hwnd)
+        elif self.hotkey_down and not self.recording:
             self.ignore_cycle = True
 
     def _release(self, key) -> None:
-        if key not in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r):
+        if key not in DICTATION_KEYS:
             return
-        self.alt_down = False
-        self.alt_started_at = None
+        self.hotkey_down = False
+        self.hotkey_started_at = None
         if not self.recording:
             return
         self.recording = False
@@ -199,11 +204,11 @@ class HoldToDictateService:
     def tick(self) -> None:
         if (
             self.controller.can_dictate()
-            and self.alt_down
+            and self.hotkey_down
             and not self.recording
             and not self.ignore_cycle
-            and self.alt_started_at is not None
-            and time.monotonic() - self.alt_started_at >= HOLD_TRIGGER_S
+            and self.hotkey_started_at is not None
+            and time.monotonic() - self.hotkey_started_at >= HOLD_TRIGGER_S
         ):
             try:
                 self.recording = self.recorder.start()

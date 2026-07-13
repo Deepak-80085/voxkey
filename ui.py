@@ -46,7 +46,7 @@ class VoxKeyControlCenter:
         ttk.Label(frame, text="VoxKey", font=("Segoe UI", 18, "bold")).grid(sticky="w")
         ttk.Label(
             frame,
-            text="Private voice typing. On your device.",
+            text="Private voice typing. Hold Right Ctrl to dictate.",
         ).grid(sticky="w", pady=(0, 16))
         self.state_label = ttk.Label(frame, font=("Segoe UI", 12, "bold"))
         self.state_label.grid(sticky="w")

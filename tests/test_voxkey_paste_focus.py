@@ -19,8 +19,12 @@ class VoxKeyPasteFocusTests(unittest.TestCase):
         self.assertTrue(pasted)
         restore.assert_called_once_with(1234)
         controller.press.assert_any_call("v")
+        self.assertNotIn(
+            __import__("pynput").keyboard.Key.ctrl_r,
+            [call.args[0] for call in controller.release.call_args_list],
+        )
 
-    def test_releasing_alt_queues_audio_with_the_original_paste_target(self):
+    def test_releasing_right_ctrl_queues_audio_with_the_original_paste_target(self):
         controller = Mock()
         runtime = Mock()
         runtime.recordings_dir.return_value = Mock()
@@ -31,7 +35,7 @@ class VoxKeyPasteFocusTests(unittest.TestCase):
         service.paste_target_hwnd = 1234
         service.recorder.stop_and_save = Mock(return_value="recording.wav")
 
-        service._release(__import__("pynput").keyboard.Key.alt)
+        service._release(__import__("pynput").keyboard.Key.ctrl_r)
 
         self.assertEqual(service.jobs.get_nowait(), ("recording.wav", 1234))
 

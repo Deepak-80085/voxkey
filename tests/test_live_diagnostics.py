@@ -39,14 +39,14 @@ class LiveDiagnosticsTests(unittest.TestCase):
         service.recorder = Recorder()
 
         with patch("voxkey_app.get_foreground_window_handle", return_value=123):
-            service._press(__import__("pynput").keyboard.Key.alt)
+            service._press(__import__("pynput").keyboard.Key.ctrl_r)
         with patch("voxkey_app.time.monotonic", return_value=999999):
             service.alt_started_at = 0
             service.tick()
-        service._release(__import__("pynput").keyboard.Key.alt)
+        service._release(__import__("pynput").keyboard.Key.ctrl_r)
 
         messages = [str(call.args[0]) for call in logger.info.call_args_list]
-        self.assertTrue(any("Alt pressed" in message for message in messages))
+        self.assertTrue(any("Right Ctrl pressed" in message for message in messages))
         self.assertTrue(any("Recording started" in message for message in messages))
         self.assertTrue(any("Recording saved" in message for message in messages))
 

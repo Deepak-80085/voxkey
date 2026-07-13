@@ -49,7 +49,7 @@ class VoxKeyRuntime:
     def default_settings(self) -> dict:
         return {
             "speech_model": "small.en",
-            "hotkey": "alt",
+            "hotkey": "right_ctrl",
             "microphone": None,
             "ollama_model": "qwen3.5:0.8b",
             "vocabulary": [],
