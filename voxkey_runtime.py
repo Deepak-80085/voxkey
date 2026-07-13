@@ -51,7 +51,7 @@ class VoxKeyRuntime:
             "speech_model": "small.en",
             "hotkey": "alt",
             "microphone": None,
-            "ollama_model": None,
+            "ollama_model": "qwen3.5:0.8b",
             "vocabulary": [],
             "start_with_windows": False,
         }
