@@ -36,10 +36,11 @@ class VoxKeyControlCenter:
     def __init__(self, controller, runtime):
         self.controller = controller
         self.runtime = runtime
+        self.running = True
         self.root = tk.Tk()
         self.root.title("VoxKey")
         self.root.resizable(False, False)
-        self.root.protocol("WM_DELETE_WINDOW", self.root.withdraw)
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
 
         frame = ttk.Frame(self.root, padding=20)
         frame.grid()
@@ -70,6 +71,11 @@ class VoxKeyControlCenter:
     def repair_models(self) -> None:
         self.controller.repair_models()
         self.render_state(self.controller.state, self.controller.reason)
+
+    def close(self) -> None:
+        """Exit rather than leave an invisible hotkey process running."""
+        self.running = False
+        self.root.destroy()
 
     def show(self) -> None:
         self.root.deiconify()

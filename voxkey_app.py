@@ -259,7 +259,7 @@ def main() -> None:
     service.start()
 
     try:
-        while True:
+        while center.running:
             service.tick()
             center.process_events()
             time.sleep(0.03)
