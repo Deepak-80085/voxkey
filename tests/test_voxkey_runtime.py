@@ -38,6 +38,14 @@ class VoxKeyRuntimeTests(unittest.TestCase):
         self.assertEqual(AppState.NEEDS_REPAIR.value, "Needs repair")
         self.assertEqual(AppState.READY.value, "Ready")
 
+    def test_sound_feedback_defaults_to_enabled_and_persists(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict("os.environ", {"LOCALAPPDATA": temp_dir}, clear=False):
+                runtime = VoxKeyRuntime()
+                self.assertTrue(runtime.default_settings()["sounds_enabled"])
+                runtime.save_settings({"sounds_enabled": False})
+                self.assertFalse(runtime.load_settings()["sounds_enabled"])
+
 
 if __name__ == "__main__":
     unittest.main()

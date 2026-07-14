@@ -54,6 +54,7 @@ class VoxKeyRuntime:
             "ollama_model": "qwen3.5:0.8b",
             "vocabulary": [],
             "start_with_windows": False,
+            "sounds_enabled": True,
         }
 
     def load_settings(self) -> dict:
