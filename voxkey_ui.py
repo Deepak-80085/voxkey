@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QTimer, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton,
+    QApplication, QCheckBox, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton, QStyle,
     QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
@@ -200,8 +200,9 @@ class VoxKeyShell:
         self.hud = VoxKeyHud()
         self.sounds = SoundPlayer(runtime.load_settings()["sounds_enabled"], runtime.logger())
         self.actions = SettingsActions(controller, runtime, self.sounds)
-        self.settings = self._make_settings()
-        self.tray = QSystemTrayIcon(QApplication.style().standardIcon(QApplication.style().SP_ComputerIcon))
+        self.tray = QSystemTrayIcon(
+            QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+        )
         menu = QMenu()
         menu.addAction("Open settings", self.show_settings)
         self.sound_action = menu.addAction("Sounds on")
@@ -214,6 +215,7 @@ class VoxKeyShell:
         menu.addAction("Quit VoxKey", self.shutdown)
         self.tray.setContextMenu(menu)
         self.tray.setToolTip("VoxKey — local dictation")
+        self.settings = self._make_settings()
         self.tray.show()
 
     def _make_settings(self) -> QDialog:

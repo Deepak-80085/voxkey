@@ -33,6 +33,19 @@ class VoxKeyUiTests(unittest.TestCase):
 
         self.assertFalse(view.visible)
 
+    def test_shell_constructs_its_settings_before_connecting_sound_controls(self):
+        from unittest.mock import Mock
+        from voxkey_ui import VoxKeyShell, create_qt_application
+
+        app = create_qt_application()
+        runtime = Mock()
+        runtime.load_settings.return_value = {"sounds_enabled": True}
+        runtime.logger.return_value = Mock()
+        shell = VoxKeyShell(Mock(), runtime, lambda: None)
+        self.assertIsNotNone(shell.tray)
+        shell.close()
+        app.quit()
+
 
 if __name__ == "__main__":
     unittest.main()
