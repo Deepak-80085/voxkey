@@ -26,6 +26,11 @@ class HudView:
     mood: str
 
 
+def should_render_hud(event: UiEvent) -> bool:
+    """State updates refresh settings; only lifecycle events change the HUD."""
+    return event.kind != "state_changed"
+
+
 def hud_view_for(event: UiEvent) -> HudView:
     """Translate framework-neutral lifecycle events into concise HUD copy."""
     views = {
@@ -248,7 +253,8 @@ class VoxKeyShell:
         self.settings.activateWindow()
 
     def handle_event(self, event: UiEvent) -> None:
-        self.hud.show_event(event)
+        if should_render_hud(event):
+            self.hud.show_event(event)
         cue = SoundCue.for_event(event)
         self.sounds.play(cue)
         if event.kind == "state_changed" and event.state:

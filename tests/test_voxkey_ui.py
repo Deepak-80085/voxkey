@@ -26,12 +26,17 @@ class VoxKeyUiTests(unittest.TestCase):
         self.assertEqual(view.detail, "Writer unavailable")
         self.assertEqual(SoundCue.for_event(event), "error")
 
-    def test_ready_state_event_hides_hud(self):
-        from voxkey_ui import hud_view_for
+    def test_ready_state_event_updates_health_without_hiding_success_hud(self):
+        from voxkey_ui import hud_view_for, should_render_hud
 
-        view = hud_view_for(UiEvent("state_changed", AppState.READY))
+        event = UiEvent("state_changed", AppState.READY)
+        self.assertFalse(hud_view_for(event).visible)
+        self.assertFalse(should_render_hud(event))
 
-        self.assertFalse(view.visible)
+    def test_paste_success_is_rendered_before_following_ready_state(self):
+        from voxkey_ui import should_render_hud
+
+        self.assertTrue(should_render_hud(UiEvent("paste_succeeded", AppState.READY)))
 
     def test_shell_constructs_its_settings_before_connecting_sound_controls(self):
         from unittest.mock import Mock
