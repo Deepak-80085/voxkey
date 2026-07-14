@@ -10,8 +10,10 @@ class VoxKeyPackagingTests(unittest.TestCase):
         contents = (ROOT / "VoxKey.spec").read_text(encoding="utf-8")
 
         self.assertIn("voxkey_app.py", contents)
-        self.assertIn("PIL.ImageTk", contents)
-        self.assertIn("PIL._imagingtk", contents)
+        self.assertIn("PySide6.QtWidgets", contents)
+        self.assertIn("PySide6.QtMultimedia", contents)
+        self.assertNotIn("PIL.ImageTk", contents)
+        self.assertNotIn("pystray", contents)
         self.assertIn("faster_whisper", contents)
         self.assertIn("assets/*.onnx", contents)
         self.assertIn("name='VoxKey'", contents)

@@ -12,7 +12,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=datas,
-    hiddenimports=['pystray', 'PIL.Image', 'PIL.ImageTk', 'PIL._imagingtk'],
+    hiddenimports=[
+        'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets', 'PySide6.QtMultimedia'
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
