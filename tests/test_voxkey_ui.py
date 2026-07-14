@@ -5,44 +5,43 @@ from voxkey_runtime import AppState
 
 
 class VoxKeyUiTests(unittest.TestCase):
-    def test_capture_started_maps_to_listening_hud_and_start_sound(self):
+    def test_capture_started_shows_an_orb_without_copy_and_plays_start_sound(self):
         from voxkey_ui import SoundCue, hud_view_for
 
         event = UiEvent("capture_started", AppState.LISTENING)
         view = hud_view_for(event)
 
         self.assertTrue(view.visible)
-        self.assertEqual(view.title, "Listening")
+        self.assertEqual(view.title, "")
+        self.assertEqual(view.detail, "")
         self.assertEqual(SoundCue.for_event(event), "start")
 
-    def test_pipeline_failure_maps_to_readable_error_and_error_sound(self):
+    def test_release_and_all_post_release_events_hide_the_hud_but_keep_sounds(self):
         from voxkey_ui import SoundCue, hud_view_for
 
-        event = UiEvent("pipeline_failed", AppState.NEEDS_REPAIR, "Writer unavailable")
-        view = hud_view_for(event)
+        for kind in ("capture_stopped", "transcribing", "polishing", "paste_succeeded", "pipeline_failed"):
+            with self.subTest(kind=kind):
+                view = hud_view_for(UiEvent(kind, AppState.READY, "Writer unavailable"))
+                self.assertFalse(view.visible)
 
-        self.assertTrue(view.visible)
-        self.assertEqual(view.title, "Needs attention")
-        self.assertEqual(view.detail, "Writer unavailable")
-        self.assertEqual(SoundCue.for_event(event), "error")
+        self.assertEqual(SoundCue.for_event(UiEvent("paste_succeeded")), "complete")
+        self.assertEqual(SoundCue.for_event(UiEvent("pipeline_failed")), "error")
 
-    def test_ready_state_event_updates_health_without_hiding_success_hud(self):
-        from voxkey_ui import hud_view_for, should_render_hud
-
-        event = UiEvent("state_changed", AppState.READY)
-        self.assertFalse(hud_view_for(event).visible)
-        self.assertFalse(should_render_hud(event))
-
-    def test_paste_success_is_rendered_before_following_ready_state(self):
+    def test_only_capture_lifecycle_events_are_sent_to_the_hud(self):
         from voxkey_ui import should_render_hud
 
-        self.assertTrue(should_render_hud(UiEvent("paste_succeeded", AppState.READY)))
+        self.assertTrue(should_render_hud(UiEvent("capture_started", AppState.LISTENING)))
+        self.assertTrue(should_render_hud(UiEvent("capture_stopped", AppState.TRANSCRIBING)))
+        self.assertFalse(should_render_hud(UiEvent("paste_succeeded", AppState.READY)))
+        self.assertFalse(should_render_hud(UiEvent("state_changed", AppState.READY)))
 
-    def test_hud_renders_copy_in_its_single_translucent_surface(self):
+    def test_hud_is_a_compact_orb_without_text_widgets(self):
         from voxkey_ui import VoxKeyHud, create_qt_application
 
         app = create_qt_application()
         hud = VoxKeyHud()
+        self.assertLessEqual(hud.width(), 132)
+        self.assertEqual(hud.width(), hud.height())
         self.assertFalse(hasattr(hud, "_title"))
         self.assertFalse(hasattr(hud, "_detail"))
         app.quit()

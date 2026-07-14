@@ -27,24 +27,15 @@ class HudView:
 
 
 def should_render_hud(event: UiEvent) -> bool:
-    """State updates refresh settings; only lifecycle events change the HUD."""
-    return event.kind != "state_changed"
+    """Only a held, active dictation capture controls the transient orb."""
+    return event.kind in {"capture_started", "capture_stopped"}
 
 
 def hud_view_for(event: UiEvent) -> HudView:
-    """Translate framework-neutral lifecycle events into concise HUD copy."""
-    views = {
-        "capture_started": HudView(True, "Listening", "Release Right Ctrl when you’re done", "listening"),
-        "capture_stopped": HudView(True, "Transcribing…", "Processing locally", "processing"),
-        "transcribing": HudView(True, "Transcribing…", "Processing locally", "processing"),
-        "polishing": HudView(True, "Polishing…", "Making your words clear", "processing"),
-        "paste_succeeded": HudView(True, "Done", "", "success"),
-        "pipeline_failed": HudView(True, "Needs attention", event.detail or "Dictation could not finish", "error"),
-        "capture_failed": HudView(True, "Needs attention", event.detail or "Microphone could not start", "error"),
-    }
-    if event.kind == "state_changed" and event.state is AppState.READY:
-        return HudView(False, "", "", "idle")
-    return views.get(event.kind, HudView(False, "", "", "idle"))
+    """Show a silent, text-free orb only while Right Ctrl is actively held."""
+    if event.kind == "capture_started":
+        return HudView(True, "", "", "listening")
+    return HudView(False, "", "", "idle")
 
 
 class SoundCue:
@@ -94,7 +85,7 @@ class VoxKeyHud(QWidget):
         super().__init__(None)
         self._view = HudView(False, "", "", "idle")
         self._phase = 0.0
-        self.setFixedSize(360, 220)
+        self.setFixedSize(132, 132)
         self.setWindowFlags(
             Qt.Tool
             | Qt.FramelessWindowHint
@@ -120,7 +111,7 @@ class VoxKeyHud(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
-        self.move(QPoint(area.center().x() - self.width() // 2, area.bottom() - self.height() - 38))
+        self.move(QPoint(area.center().x() - self.width() // 2, area.bottom() - self.height() - 52))
 
     def show_event(self, event: UiEvent) -> None:
         view = hud_view_for(event)
@@ -134,16 +125,13 @@ class VoxKeyHud(QWidget):
         self.show()
         self.raise_()
         self._pulse.start()
-        delay = 500 if view.mood == "success" else 3500 if view.mood == "error" else 0
-        if delay:
-            QTimer.singleShot(delay, self.hide)
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        cx, cy = self.width() / 2, 76
-        colors = self._COLORS.get(self._view.mood, self._COLORS["processing"])
-        radius = 51 + math.sin(self._phase) * (5 if self._view.mood == "listening" else 2)
+        cx, cy = self.width() / 2, self.height() / 2
+        colors = self._COLORS["listening"]
+        radius = 45 + math.sin(self._phase) * 4
         gradient = QLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius)
         gradient.setColorAt(0, colors[0])
         gradient.setColorAt(0.48, colors[1])
@@ -151,20 +139,11 @@ class VoxKeyHud(QWidget):
         painter.setPen(Qt.NoPen)
         painter.setBrush(gradient)
         painter.drawEllipse(QPoint(int(cx), int(cy)), int(radius), int(radius))
-        painter.setPen(QPen(QColor(210, 203, 255, 115), 1.2))
-        for index in range(9):
-            offset = (index - 4) * 9
-            height = 4 + abs(math.sin(self._phase + index * 0.65)) * 12
-            painter.drawLine(int(cx + offset), 139 - int(height / 2), int(cx + offset), 139 + int(height / 2))
-        painter.setBrush(QColor(11, 12, 18, 205))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(30, 150, self.width() - 60, 55, 16, 16)
-        painter.setPen(QColor("#ffffff"))
-        painter.setFont(QFont("Segoe UI", 15, QFont.Weight.DemiBold))
-        painter.drawText(30, 157, self.width() - 60, 24, Qt.AlignHCenter | Qt.AlignVCenter, self._view.title)
-        painter.setPen(QColor("#c8c8d5"))
-        painter.setFont(QFont("Segoe UI", 9))
-        painter.drawText(42, 181, self.width() - 84, 18, Qt.AlignHCenter | Qt.AlignVCenter, self._view.detail)
+        painter.setPen(QPen(QColor(230, 239, 255, 120), 1.2))
+        for index in range(7):
+            offset = (index - 3) * 8
+            height = 4 + abs(math.sin(self._phase + index * 0.65)) * 10
+            painter.drawLine(int(cx + offset), int(cy - height / 2), int(cx + offset), int(cy + height / 2))
 
 
 class SettingsActions:
