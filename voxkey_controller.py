@@ -84,7 +84,8 @@ class VoxKeyController:
             self._emit("transcribing", AppState.TRANSCRIBING)
             self._set_state(AppState.TRANSCRIBING)
             transcript = self.speech.transcribe(audio_path)
-            transcribe_ms = round((self.clock() - started) * 1000)
+            transcribe_finished = self.clock()
+            transcribe_ms = round((transcribe_finished - started) * 1000)
             if self.logger:
                 self.logger.info(
                     "Transcription completed; chars=%d; elapsed_ms=%d",
@@ -98,7 +99,8 @@ class VoxKeyController:
             self._emit("polishing", AppState.POLISHING)
             self._set_state(AppState.POLISHING)
             polished = self.writer.polish(transcript)
-            polish_ms = round((self.clock() - started) * 1000)
+            polish_finished = self.clock()
+            polish_ms = round((polish_finished - transcribe_finished) * 1000)
             if self.logger:
                 self.logger.info(
                     "Polishing completed; chars=%d; elapsed_ms=%d",

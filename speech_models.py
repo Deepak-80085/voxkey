@@ -145,6 +145,7 @@ class SpeechModelManager:
             return self._transcribe_once(audio_path)
 
     def _transcribe_once(self, audio_path: Path) -> str:
+        self.logger.info("Transcribing with device=%s", self.device)
         segments, _ = self.model.transcribe(
             str(audio_path),
             language="en",

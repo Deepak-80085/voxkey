@@ -16,6 +16,15 @@ class VoxKeyUiTests(unittest.TestCase):
         self.assertEqual(view.detail, "")
         self.assertEqual(SoundCue.for_event(event), "start")
 
+    def test_sound_player_uses_bundled_simplespeech_start_and_end_assets(self):
+        from voxkey_ui import SoundPlayer
+
+        sounds = SoundPlayer()
+
+        self.assertEqual(sounds._SOUND_FILES, {"start": "starrt.mp3", "complete": "end.mp3"})
+        self.assertTrue((sounds.asset_dir / "starrt.mp3").is_file())
+        self.assertTrue((sounds.asset_dir / "end.mp3").is_file())
+
     def test_release_and_all_post_release_events_hide_the_hud_but_keep_sounds(self):
         from voxkey_ui import SoundCue, hud_view_for
 
@@ -40,7 +49,7 @@ class VoxKeyUiTests(unittest.TestCase):
 
         app = create_qt_application()
         hud = VoxKeyHud()
-        self.assertLessEqual(hud.width(), 132)
+        self.assertLessEqual(hud.width(), 52)
         self.assertEqual(hud.width(), hud.height())
         self.assertFalse(hasattr(hud, "_title"))
         self.assertFalse(hasattr(hud, "_detail"))

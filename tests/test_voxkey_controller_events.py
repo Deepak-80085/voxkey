@@ -31,6 +31,22 @@ class VoxKeyControllerEventTests(unittest.TestCase):
         )
         self.assertEqual(emitted[-2].elapsed_ms, 500)
 
+    def test_success_logs_individual_transcription_polishing_and_paste_timings(self):
+        speech, writer, paste, logger = Mock(), Mock(), Mock(return_value=True), Mock()
+        speech.health_check.return_value = Mock(ready=True, reason=None)
+        writer.health_check.return_value = Mock(ready=True, reason=None)
+        speech.transcribe.return_value = "hello"
+        writer.polish.return_value = "Hello."
+        ticks = iter((1.0, 1.2, 1.7, 1.8))
+        controller = VoxKeyController(speech, writer, paste, logger=logger, clock=lambda: next(ticks))
+        controller.start()
+
+        controller.process_audio(Path("sample.wav"))
+
+        logger.info.assert_any_call("Transcription completed; chars=%d; elapsed_ms=%d", 5, 200)
+        logger.info.assert_any_call("Polishing completed; chars=%d; elapsed_ms=%d", 6, 500)
+        logger.info.assert_any_call("Paste attempted; success=%s; target=%s; total_ms=%d", True, None, 800)
+
     def test_writer_failure_emits_failure_and_never_pastes_raw_text(self):
         speech, writer, paste, events = Mock(), Mock(), Mock(), EventBus()
         speech.health_check.return_value = Mock(ready=True, reason=None)

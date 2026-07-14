@@ -36,6 +36,17 @@ class SpeechModelTests(unittest.TestCase):
 
         self.assertEqual(handles, [str(base / "cuda_v12"), str(base / "mlx_cuda_v13")])
 
+    def test_transcription_logs_the_active_inference_device(self):
+        model, logger = Mock(), Mock()
+        model.transcribe.return_value = ([], None)
+        self.runtime.logger = Mock(return_value=logger)
+        manager = SpeechModelManager(self.runtime, model_loader=Mock(return_value=model))
+        manager.model, manager.device = model, "cuda"
+
+        manager.transcribe(Path("sample.wav"))
+
+        logger.info.assert_any_call("Transcribing with device=%s", "cuda")
+
     def test_gpu_load_failure_retries_same_small_en_model_on_cpu(self):
         cpu_model = Mock()
         loader = Mock(side_effect=[RuntimeError("GPU unavailable"), cpu_model])

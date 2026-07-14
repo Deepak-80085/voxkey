@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ctypes
 import math
 import sys
-import winsound
+import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QTimer, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
@@ -52,23 +54,38 @@ class SoundCue:
 
 
 class SoundPlayer:
-    def __init__(self, enabled: bool = True, logger=None) -> None:
+    """Play VoxKey's bundled SimpleSpeech MP3 cues without blocking dictation."""
+
+    _SOUND_FILES = {"start": "starrt.mp3", "complete": "end.mp3"}
+
+    def __init__(self, enabled: bool = True, logger=None, asset_dir: Path | None = None) -> None:
         self.enabled = enabled
         self.logger = logger
+        self.asset_dir = asset_dir or Path(__file__).resolve().parent / "asset"
 
     def play(self, cue: str | None) -> None:
         if not cue or not self.enabled:
             return
+        filename = self._SOUND_FILES.get(cue)
+        if not filename or sys.platform != "win32":
+            return
+        path = self.asset_dir / filename
+        if not path.is_file():
+            if self.logger:
+                self.logger.warning("VoxKey sound asset is missing: %s", path)
+            return
+        threading.Thread(target=self._play_mp3, args=(path, cue), daemon=True).start()
+
+    def _play_mp3(self, path: Path, cue: str) -> None:
         try:
-            sound = {
-                "start": winsound.MB_OK,
-                "complete": winsound.MB_ICONASTERISK,
-                "error": winsound.MB_ICONHAND,
-            }[cue]
-            winsound.MessageBeep(sound)
+            winmm = ctypes.windll.winmm
+            alias = f"voxkey_{cue}_{threading.get_ident()}"
+            winmm.mciSendStringW(f'open "{path}" type mpegvideo alias {alias}', None, 0, None)
+            winmm.mciSendStringW(f"play {alias} wait", None, 0, None)
+            winmm.mciSendStringW(f"close {alias}", None, 0, None)
         except Exception:
             if self.logger:
-                self.logger.exception("Sound cue failed: %s", cue)
+                self.logger.exception("VoxKey sound cue failed: %s", cue)
 
 
 class VoxKeyHud(QWidget):
@@ -85,7 +102,7 @@ class VoxKeyHud(QWidget):
         super().__init__(None)
         self._view = HudView(False, "", "", "idle")
         self._phase = 0.0
-        self.setFixedSize(132, 132)
+        self.setFixedSize(52, 52)
         self.setWindowFlags(
             Qt.Tool
             | Qt.FramelessWindowHint
@@ -111,7 +128,7 @@ class VoxKeyHud(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
-        self.move(QPoint(area.center().x() - self.width() // 2, area.bottom() - self.height() - 52))
+        self.move(QPoint(area.center().x() - self.width() // 2, area.bottom() - self.height() - 36))
 
     def show_event(self, event: UiEvent) -> None:
         view = hud_view_for(event)
@@ -131,7 +148,7 @@ class VoxKeyHud(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         cx, cy = self.width() / 2, self.height() / 2
         colors = self._COLORS["listening"]
-        radius = 45 + math.sin(self._phase) * 4
+        radius = 18 + math.sin(self._phase) * 1.5
         gradient = QLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius)
         gradient.setColorAt(0, colors[0])
         gradient.setColorAt(0.48, colors[1])
@@ -139,11 +156,6 @@ class VoxKeyHud(QWidget):
         painter.setPen(Qt.NoPen)
         painter.setBrush(gradient)
         painter.drawEllipse(QPoint(int(cx), int(cy)), int(radius), int(radius))
-        painter.setPen(QPen(QColor(230, 239, 255, 120), 1.2))
-        for index in range(7):
-            offset = (index - 3) * 8
-            height = 4 + abs(math.sin(self._phase + index * 0.65)) * 10
-            painter.drawLine(int(cx + offset), int(cy - height / 2), int(cx + offset), int(cy + height / 2))
 
 
 class SettingsActions:
