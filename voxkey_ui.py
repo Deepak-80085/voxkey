@@ -8,7 +8,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt
+from PySide6.QtCore import QEasingCurve, QPoint, Property, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QLabel, QMenu, QPushButton, QStyle, QSystemTrayIcon,
@@ -100,6 +100,7 @@ class VoxKeyHud(QWidget):
     def __init__(self) -> None:
         super().__init__(None)
         self._view = HudView(False, "", "", "idle")
+        self._orb_radius = 18.0
         self.setFixedSize(52, 52)
         self.setWindowFlags(
             Qt.Tool
@@ -110,11 +111,11 @@ class VoxKeyHud(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._breath = QPropertyAnimation(self, b"windowOpacity", self)
-        self._breath.setDuration(1200)
-        self._breath.setStartValue(0.76)
-        self._breath.setKeyValueAt(0.5, 1.0)
-        self._breath.setEndValue(0.76)
+        self._breath = QPropertyAnimation(self, b"orbRadius", self)
+        self._breath.setDuration(900)
+        self._breath.setStartValue(15.0)
+        self._breath.setKeyValueAt(0.5, 21.0)
+        self._breath.setEndValue(15.0)
         self._breath.setLoopCount(-1)
         self._breath.setEasingCurve(QEasingCurve.InOutSine)
 
@@ -133,17 +134,26 @@ class VoxKeyHud(QWidget):
             return
         self._view = view
         self._position_bottom_center()
-        self.setWindowOpacity(0.76)
+        self._orb_radius = 15.0
         self.show()
         self.raise_()
         self._breath.start()
+
+    def _get_orb_radius(self) -> float:
+        return self._orb_radius
+
+    def _set_orb_radius(self, radius: float) -> None:
+        self._orb_radius = float(radius)
+        self.update()
+
+    orbRadius = Property(float, _get_orb_radius, _set_orb_radius)
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         cx, cy = self.width() / 2, self.height() / 2
         colors = self._COLORS["listening"]
-        radius = 18
+        radius = self._orb_radius
         gradient = QLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius)
         gradient.setColorAt(0, colors[0])
         gradient.setColorAt(0.48, colors[1])
