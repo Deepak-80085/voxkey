@@ -1,63 +1,47 @@
-name: Build Windows release
+name: VoxKey CI and release
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
+    branches:
+      - "**"
+  pull_request:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  test-build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller==6.19.0
-
-      - name: Build application folder
-        run: pyinstaller --clean --noconfirm SimpleSpeech.spec
-
-      - name: Verify frozen runtime dependencies
-        run: python tests/test_packaging.py dist/SimpleSpeech
-
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip; python -m pip install -r requirements.txt pyinstaller
+      - name: Test
+        run: python -m unittest discover -s tests -v
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
-
-      - name: Build installer
-        shell: powershell
+      - name: Package
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\SimpleSpeech.iss
-
-      - name: Generate installer checksum
-        shell: powershell
-        run: |
-          $installer = Get-ChildItem release\SimpleSpeech-Setup-*.exe | Select-Object -First 1
-          (Get-FileHash $installer.FullName -Algorithm SHA256).Hash + "  " + $installer.Name |
-            Set-Content -NoNewline -Encoding ascii release\SHA256SUMS.txt
-
+          pyinstaller --clean --noconfirm VoxKey.spec
+          python tests/test_packaging.py dist/VoxKey
+          iscc installer/VoxKey.iss
+          $hash = (Get-FileHash release/VoxKey-Setup-2.1.0.exe -Algorithm SHA256).Hash
+          "$hash  VoxKey-Setup-2.1.0.exe" | Set-Content release/VoxKey-Setup-2.1.0.exe.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoxKey-Windows
+          path: |
+            release/VoxKey-Setup-2.1.0.exe
+            release/VoxKey-Setup-2.1.0.exe.sha256
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
           files: |
-            release/SimpleSpeech-Setup-*.exe
-            release/SHA256SUMS.txt
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SimpleSpeech-Windows-installer
-          path: |
-            release/SimpleSpeech-Setup-*.exe
-            release/SHA256SUMS.txt
+            release/VoxKey-Setup-2.1.0.exe
+            release/VoxKey-Setup-2.1.0.exe.sha256

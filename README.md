@@ -1,119 +1,55 @@
-# SimpleSpeech
+# VoxKey
 
-**Offline push-to-talk dictation for Windows.** Hold a hotkey, speak, release it, and SimpleSpeech pastes the transcript into the app you are already using.
+**Private, local voice typing for Windows.** Hold **Right Ctrl**, speak naturally, release, and VoxKey pastes polished English text back into the app you were using.
 
-## Download and install
+VoxKey is designed to remain out of sight until you dictate: a Siri-inspired voice HUD appears while listening and processing, then disappears after a successful paste.
 
-1. Open the latest [GitHub Release](https://github.com/Deepak-80085/simplespeech/releases/latest).
-2. Download **`SimpleSpeech-Setup-<version>.exe`**.
-3. Run the installer and launch SimpleSpeech.
-4. Click in any editable field—Notepad, VS Code, a browser, Slack, etc.—then dictate.
+## Local-first by design
 
-The installer creates a Start Menu entry, an uninstaller, and starts the app in the Windows system tray. No Python, terminal, ZIP extraction, or account is required.
+- English-only speech recognition using local `small.en` (never `base.en`).
+- Local writing polish through Ollama model `qwen3.5:0.8b`.
+- No account, subscription, API key, cloud transcription, or raw-text fallback.
+- Speech/writer failure means no paste—not an unpolished transcript.
 
-> **Windows SmartScreen:** a new unsigned open-source Windows application may display an “Unknown publisher” warning. Only download installers from this repository's GitHub Releases page. Release checksums are published with each release.
+## Requirements
 
-## Use
-
-| Action | Result |
-| --- | --- |
-| Hold **Alt** | Record and paste the raw local transcript. |
-| Hold **Alt + Shift** | Record, transcribe locally, then optionally clean the text with local Ollama before pasting. |
-| Tray icon → Pause Dictation | Temporarily disable recording. |
-| Tray icon → Open Logs | Open local diagnostics if something fails. |
-| Tray icon → Quit | Stop SimpleSpeech. |
-
-Hold the hotkey for about 0.3 seconds before speaking. Release **Alt** to finish. The app restores the window that was active when recording began, then pastes the result.
-
-## Privacy and local processing
-
-- Raw dictation uses **faster-whisper** on your computer. Audio is not sent to a transcription API.
-- The Whisper model is downloaded once on first use and stored in the normal local model cache. Subsequent transcription works offline.
-- Temporary recordings are created under your per-user SimpleSpeech data directory and deleted after processing.
-- **Refined mode is optional.** It sends text only to the Ollama server configured on your own machine (`http://localhost:11434` by default); it never calls a hosted LLM service.
-- SimpleSpeech writes a small rotating diagnostic log at `%LOCALAPPDATA%\SimpleSpeech\simplespeech.log`. It does not retain transcripts.
-
-## System requirements
-
-- Windows 10 or Windows 11
-- A working microphone
-- Internet only for the first Whisper-model download (unless its cache is already present)
-- NVIDIA GPU optional; SimpleSpeech automatically falls back to CPU
-- Ollama plus `qwen3.5:0.8b` only for **Alt + Shift** refined mode
-
-SimpleSpeech is intentionally **Windows-first** today. macOS, Linux, and Android are not supported releases yet.
-
-## Refined mode (optional)
-
-Raw dictation works without Ollama. To enable refinement:
+- Windows 10/11 x64
+- NVIDIA GPU is optional; VoxKey uses it when the local runtime is available and otherwise uses the same `small.en` model on CPU.
+- [Ollama](https://ollama.com/) running locally with:
 
 ```powershell
 ollama pull qwen3.5:0.8b
-ollama serve
 ```
 
-If Ollama is unavailable, SimpleSpeech safely pastes the raw local transcript and shows a brief status message.
+## Install and use
 
-The refiner model can be changed for local development with:
+1. Download `VoxKey-Setup-2.1.0.exe` from Releases.
+2. Install for the current Windows user.
+3. Start VoxKey. It lives in the system tray when ready.
+4. Click into any ordinary app, hold **Right Ctrl** for a moment, speak, then release it.
+
+The tray menu opens settings, toggles sounds, repairs models, opens diagnostics, and quits VoxKey.
+
+> **Unsigned pre-release:** Until the project is code-signed, Windows SmartScreen may show a warning. Verify the release SHA-256 checksum before installing.
+
+## Limitations
+
+- Windows secure-desktop screens (lock screen, UAC prompts, Ctrl+Alt+Del) cannot accept dictation.
+- Windows may block input into an elevated application when VoxKey is not elevated. Run VoxKey as administrator only when you specifically need to dictate into an administrator-run app.
+- The fixed v0.1.0 dictation trigger is Right Ctrl. Configurable hotkeys, history, vocabulary editor, autostart, onboarding, and per-app controls are planned for v0.2.0.
+
+## Diagnostics and privacy
+
+Settings and diagnostics are stored in `%LOCALAPPDATA%\VoxKey`. The latest diagnostic capture is `%LOCALAPPDATA%\VoxKey\last-dictation.wav`; delete it whenever you want. See [privacy details](docs/privacy.md).
+
+## Build from source
 
 ```powershell
-$env:OLLAMA_MODEL = "qwen3.5:0.8b"
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\pyinstaller.exe --clean --noconfirm VoxKey.spec
+& 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' installer\VoxKey.iss
 ```
 
-## Development
-
-```powershell
-# Windows PowerShell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-python app.py
-```
-
-### Build the desktop application
-
-```powershell
-pip install pyinstaller==6.19.0
-pyinstaller --clean --noconfirm SimpleSpeech.spec
-```
-
-The application folder is created at `dist\SimpleSpeech\`. It is an input to the installer, not the end-user distribution format.
-
-### Build the one-click installer
-
-Install [Inno Setup](https://jrsoftware.org/isinfo.php), then run:
-
-```powershell
-ISCC installer\SimpleSpeech.iss
-```
-
-This creates `release\SimpleSpeech-Setup-1.0.2.exe`.
-
-Upgrades replace the installed program files under `%LOCALAPPDATA%\Programs\SimpleSpeech` while preserving `%LOCALAPPDATA%\SimpleSpeech`, including its log and temporary-recording folder. Uninstall removes the program files and intentionally preserves that per-user diagnostic data.
-
-## Architecture
-
-```text
-app.py          hotkey workflow, recording, clipboard paste, indicator, tray menu
-transcriber.py  local faster-whisper model loading and GPU-to-CPU fallback
-refiner.py      optional local Ollama/qwen3.5:0.8b cleanup
-runtime.py      per-user application paths and bounded diagnostic logging
-installer/      Inno Setup script for a normal Windows installer
-```
-
-## Troubleshooting
-
-- **No transcript / microphone error:** check Windows Settings → Privacy & security → Microphone and confirm the selected/default input device works.
-- **Slow first launch:** the local Whisper model may be downloading or loading for the first time.
-- **GPU unavailable:** this is safe; SimpleSpeech uses CPU automatically.
-- **Alt shortcut conflict:** SimpleSpeech ignores Alt cycles used with another non-modifier key before recording starts. Use the tray menu to pause it if needed.
-- **Refined mode pastes raw text:** make sure Ollama is running and `qwen3.5:0.8b` is installed. Raw dictation is unaffected.
-- **Paste fails in an elevated application:** run SimpleSpeech with the same Windows privilege level as the target app.
-- **Status overlay error:** install the current release; it includes Pillow’s Tk runtime files required by the status indicator.
-
-Before publishing a release, run the [Windows release smoke-test checklist](docs/windows-release-smoke-test.md) on a Windows machine or separate Windows account.
-
-## License
-
-[MIT](LICENSE)
+See [architecture](docs/architecture.md), [Windows smoke testing](docs/windows-v0.1.0-smoke-test.md), [contributing](CONTRIBUTING.md), and [security](SECURITY.md).

@@ -22,10 +22,11 @@ class VoxKeyPackagingTests(unittest.TestCase):
         contents = (ROOT / "installer" / "VoxKey.iss").read_text(encoding="utf-8")
 
         self.assertIn('#define MyAppName "VoxKey"', contents)
-        self.assertIn('#define MyAppVersion "2.0.6-test"', contents)
+        self.assertIn('#define MyAppVersion "2.1.0"', contents)
         self.assertIn('DefaultDirName={localappdata}\\Programs\\{#MyAppName}', contents)
         self.assertIn('Source: "..\\dist\\VoxKey\\*"', contents)
         self.assertNotIn("VoxKey\\recordings", contents)
+        self.assertIn("https://github.com/Deepak-80085/voxkey", contents)
 
 
 if __name__ == "__main__":
