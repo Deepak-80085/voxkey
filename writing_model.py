@@ -67,6 +67,8 @@ class WritingModelClient:
                     "prompt": prompt,
                     "stream": False,
                     "think": False,
+                    # Avoid reloading the local writer after each dictation.
+                    "keep_alive": "24h",
                     "options": {"num_predict": 120, "temperature": 0},
                 },
                 timeout=20,
