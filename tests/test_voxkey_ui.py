@@ -44,13 +44,17 @@ class VoxKeyUiTests(unittest.TestCase):
         self.assertFalse(should_render_hud(UiEvent("paste_succeeded", AppState.READY)))
         self.assertFalse(should_render_hud(UiEvent("state_changed", AppState.READY)))
 
-    def test_hud_is_a_compact_orb_without_text_widgets(self):
+    def test_hud_is_a_compact_orb_with_compositor_animation_not_a_repaint_timer(self):
+        from PySide6.QtCore import QPropertyAnimation
         from voxkey_ui import VoxKeyHud, create_qt_application
 
         app = create_qt_application()
         hud = VoxKeyHud()
         self.assertLessEqual(hud.width(), 52)
         self.assertEqual(hud.width(), hud.height())
+        self.assertFalse(hasattr(hud, "_pulse"))
+        self.assertIsInstance(hud._breath, QPropertyAnimation)
+        self.assertEqual(hud._breath.propertyName(), b"windowOpacity")
         self.assertFalse(hasattr(hud, "_title"))
         self.assertFalse(hasattr(hud, "_detail"))
         app.quit()

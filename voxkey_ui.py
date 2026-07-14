@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import ctypes
-import math
 import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QTimer, Qt
+from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QLabel, QMenu, QPushButton, QStyle, QSystemTrayIcon,
@@ -101,7 +100,6 @@ class VoxKeyHud(QWidget):
     def __init__(self) -> None:
         super().__init__(None)
         self._view = HudView(False, "", "", "idle")
-        self._phase = 0.0
         self.setFixedSize(52, 52)
         self.setWindowFlags(
             Qt.Tool
@@ -112,16 +110,13 @@ class VoxKeyHud(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._pulse = QTimer(self)
-        self._pulse.setInterval(40)
-        self._pulse.timeout.connect(self._advance_animation)
-        self._opacity = QPropertyAnimation(self, b"windowOpacity", self)
-        self._opacity.setDuration(180)
-        self._opacity.setEasingCurve(QEasingCurve.OutCubic)
-
-    def _advance_animation(self) -> None:
-        self._phase += 0.16
-        self.update()
+        self._breath = QPropertyAnimation(self, b"windowOpacity", self)
+        self._breath.setDuration(1200)
+        self._breath.setStartValue(0.76)
+        self._breath.setKeyValueAt(0.5, 1.0)
+        self._breath.setEndValue(0.76)
+        self._breath.setLoopCount(-1)
+        self._breath.setEasingCurve(QEasingCurve.InOutSine)
 
     def _position_bottom_center(self) -> None:
         screen = QApplication.primaryScreen()
@@ -133,22 +128,22 @@ class VoxKeyHud(QWidget):
     def show_event(self, event: UiEvent) -> None:
         view = hud_view_for(event)
         if not view.visible:
+            self._breath.stop()
             self.hide()
-            self._pulse.stop()
             return
         self._view = view
         self._position_bottom_center()
-        self.setWindowOpacity(1.0)
+        self.setWindowOpacity(0.76)
         self.show()
         self.raise_()
-        self._pulse.start()
+        self._breath.start()
 
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         cx, cy = self.width() / 2, self.height() / 2
         colors = self._COLORS["listening"]
-        radius = 18 + math.sin(self._phase) * 1.5
+        radius = 18
         gradient = QLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius)
         gradient.setColorAt(0, colors[0])
         gradient.setColorAt(0.48, colors[1])
