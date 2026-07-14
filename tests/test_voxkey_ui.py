@@ -38,6 +38,15 @@ class VoxKeyUiTests(unittest.TestCase):
 
         self.assertTrue(should_render_hud(UiEvent("paste_succeeded", AppState.READY)))
 
+    def test_hud_renders_copy_in_its_single_translucent_surface(self):
+        from voxkey_ui import VoxKeyHud, create_qt_application
+
+        app = create_qt_application()
+        hud = VoxKeyHud()
+        self.assertFalse(hasattr(hud, "_title"))
+        self.assertFalse(hasattr(hud, "_detail"))
+        app.quit()
+
     def test_shell_constructs_its_settings_before_connecting_sound_controls(self):
         from unittest.mock import Mock
         from voxkey_ui import VoxKeyShell, create_qt_application

@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QTimer, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton, QStyle,
-    QSystemTrayIcon, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QDialog, QLabel, QMenu, QPushButton, QStyle, QSystemTrayIcon,
+    QVBoxLayout, QWidget,
 )
 
 from voxkey_events import UiEvent
@@ -104,20 +104,6 @@ class VoxKeyHud(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._title = QLabel(self)
-        self._title.setAlignment(Qt.AlignCenter)
-        self._title.setFont(QFont("Segoe UI", 15, QFont.DemiBold))
-        self._title.setStyleSheet("color: white; background: transparent;")
-        self._detail = QLabel(self)
-        self._detail.setAlignment(Qt.AlignCenter)
-        self._detail.setWordWrap(True)
-        self._detail.setFont(QFont("Segoe UI", 9))
-        self._detail.setStyleSheet("color: #c8c8d5; background: transparent;")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 132, 28, 15)
-        layout.setSpacing(3)
-        layout.addWidget(self._title)
-        layout.addWidget(self._detail)
         self._pulse = QTimer(self)
         self._pulse.setInterval(40)
         self._pulse.timeout.connect(self._advance_animation)
@@ -143,8 +129,6 @@ class VoxKeyHud(QWidget):
             self._pulse.stop()
             return
         self._view = view
-        self._title.setText(view.title)
-        self._detail.setText(view.detail)
         self._position_bottom_center()
         self.setWindowOpacity(1.0)
         self.show()
@@ -172,6 +156,15 @@ class VoxKeyHud(QWidget):
             offset = (index - 4) * 9
             height = 4 + abs(math.sin(self._phase + index * 0.65)) * 12
             painter.drawLine(int(cx + offset), 139 - int(height / 2), int(cx + offset), 139 + int(height / 2))
+        painter.setBrush(QColor(11, 12, 18, 205))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(30, 150, self.width() - 60, 55, 16, 16)
+        painter.setPen(QColor("#ffffff"))
+        painter.setFont(QFont("Segoe UI", 15, QFont.Weight.DemiBold))
+        painter.drawText(30, 157, self.width() - 60, 24, Qt.AlignHCenter | Qt.AlignVCenter, self._view.title)
+        painter.setPen(QColor("#c8c8d5"))
+        painter.setFont(QFont("Segoe UI", 9))
+        painter.drawText(42, 181, self.width() - 84, 18, Qt.AlignHCenter | Qt.AlignVCenter, self._view.detail)
 
 
 class SettingsActions:
