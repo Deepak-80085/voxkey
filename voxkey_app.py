@@ -17,6 +17,7 @@ from pynput import keyboard
 from scipy.io.wavfile import write
 
 from speech_models import SpeechModelManager
+from voxkey_events import EventBus, UiEvent
 from ui import VoxKeyControlCenter
 from voxkey_controller import VoxKeyController
 from voxkey_runtime import AppState, VoxKeyRuntime
@@ -146,10 +147,11 @@ class Recorder:
 class HoldToDictateService:
     """Single Right Ctrl hold hotkey; records only when VoxKey is Ready."""
 
-    def __init__(self, controller: VoxKeyController, runtime: VoxKeyRuntime, logger=None):
+    def __init__(self, controller: VoxKeyController, runtime: VoxKeyRuntime, logger=None, events=None):
         self.controller = controller
         self.runtime = runtime
         self.logger = logger or runtime.logger()
+        self.events = events
         self.recorder = Recorder(runtime.recordings_dir())
         self.hotkey_down = False
         self.recording = False
@@ -159,6 +161,10 @@ class HoldToDictateService:
         self.listener = None
         self.jobs = queue.Queue()
         self.worker = threading.Thread(target=self._work, daemon=True)
+
+    def _emit(self, kind: str, state=None, detail: str | None = None) -> None:
+        if self.events:
+            self.events.publish(UiEvent(kind, state, detail))
 
     def start(self) -> None:
         self.worker.start()
@@ -197,9 +203,12 @@ class HoldToDictateService:
             audio_path = self.recorder.stop_and_save()
             self.logger.info("Recording saved: %s; target=%s", audio_path, target_hwnd)
             self.jobs.put((audio_path, target_hwnd))
+            self._emit("capture_stopped", AppState.TRANSCRIBING)
         except Exception as exc:
             self.logger.exception("Recording stop failed")
-            self.controller._set_state(AppState.NEEDS_REPAIR, f"Microphone needs repair: {exc}")
+            detail = f"Microphone needs repair: {exc}"
+            self._emit("capture_failed", AppState.NEEDS_REPAIR, detail)
+            self.controller._set_state(AppState.NEEDS_REPAIR, detail)
 
     def tick(self) -> None:
         if (
@@ -214,10 +223,13 @@ class HoldToDictateService:
                 self.recording = self.recorder.start()
                 if self.recording:
                     self.logger.info("Recording started")
+                    self._emit("capture_started", AppState.LISTENING)
                     self.controller._set_state(AppState.LISTENING)
             except Exception as exc:
                 self.logger.exception("Recording start failed")
-                self.controller._set_state(AppState.NEEDS_REPAIR, f"Microphone needs repair: {exc}")
+                detail = f"Microphone needs repair: {exc}"
+                self._emit("capture_failed", AppState.NEEDS_REPAIR, detail)
+                self.controller._set_state(AppState.NEEDS_REPAIR, detail)
 
     def _work(self) -> None:
         while True:

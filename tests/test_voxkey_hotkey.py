@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 from pynput import keyboard
 from voxkey_app import HoldToDictateService
+from voxkey_events import EventBus
 from voxkey_runtime import AppState, VoxKeyRuntime
 
 
@@ -52,6 +53,19 @@ class VoxKeyHotkeyTests(unittest.TestCase):
             service.tick()
 
         self.assertFalse(service.recording)
+
+    def test_valid_hold_emits_capture_started_event(self):
+        runtime = Mock(spec=VoxKeyRuntime)
+        runtime.recordings_dir.return_value = Path(".")
+        runtime.logger.return_value = Mock()
+        events = EventBus()
+        service = HoldToDictateService(Controller(), runtime, events=events)
+        service.recorder = Recorder()
+        with patch("voxkey_app.time.monotonic", side_effect=[100, 101]):
+            service._press(keyboard.Key.ctrl_r)
+            service.tick()
+
+        self.assertEqual(events.drain()[-1].kind, "capture_started")
 
 
 if __name__ == "__main__":
