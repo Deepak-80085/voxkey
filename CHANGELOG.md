@@ -1,18 +1,18 @@
 # Changelog
 
-## 1.0.2 — 2026-07-11
+## [2.1.0] - 2026-07-14
 
-- Fix Windows installer packaging by explicitly bundling Pillow’s `ImageTk` module and native `_imagingtk` bridge required by the status overlay.
-- Verify frozen release artifacts contain the Silero VAD model and required Pillow/Tk files before installer creation.
+### Added
+- Native Qt system-tray experience and compact local settings window.
+- Siri-inspired transient bottom-center dictation HUD for listening, local transcription, polishing, completion, and errors.
+- Default-on local sound cues for capture start, successful paste, and actionable errors.
+- Lifecycle event bus and stage/total timing diagnostics.
+- Public-repository documentation: MIT license, privacy/security/contribution policy, architecture notes, CI/release workflow, and Windows smoke-test procedure.
 
-## 1.0.1 — 2026-07-11
+### Changed
+- Existing `small.en` local speech recognition, local Ollama `qwen3.5:0.8b` polishing, Right Ctrl trigger, target-focus restoration, strict no-raw-paste behavior, and single-instance protection remain in force.
+- Installer version advances from `2.0.6-test` to `2.1.0` for a safe in-place Windows upgrade.
 
-- Fix Windows installer packaging by including the faster-whisper Silero VAD ONNX asset required for voice activity detection.
-
-## 1.0.0 — 2026-07-11
-
-- First Windows installer release.
-- Offline push-to-talk dictation with local faster-whisper transcription.
-- Global **Alt** raw dictation and optional **Alt + Shift** local Ollama refinement.
-- NVIDIA GPU acceleration with automatic CPU fallback.
-- System-tray controls, status indicator, bounded local diagnostics, and reliable temporary-recording cleanup.
+### Known limitations
+- The installer is unsigned; verify its published SHA-256 checksum before installing.
+- Windows secure desktop cannot accept input. An unelevated VoxKey process can be blocked by an elevated target application.
