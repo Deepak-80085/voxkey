@@ -9,7 +9,10 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QTimer, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
-from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication, QCheckBox, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton,
+    QSystemTrayIcon, QVBoxLayout, QWidget,
+)
 
 from voxkey_events import UiEvent
 from voxkey_runtime import AppState
@@ -164,6 +167,96 @@ class VoxKeyHud(QWidget):
             offset = (index - 4) * 9
             height = 4 + abs(math.sin(self._phase + index * 0.65)) * 12
             painter.drawLine(int(cx + offset), 139 - int(height / 2), int(cx + offset), 139 + int(height / 2))
+
+
+class SettingsActions:
+    """Small testable adapter between settings controls and local runtime."""
+
+    def __init__(self, controller, runtime, sound_player=None) -> None:
+        self.controller = controller
+        self.runtime = runtime
+        self.sound_player = sound_player
+
+    def set_sounds_enabled(self, enabled: bool) -> None:
+        settings = dict(self.runtime.load_settings())
+        settings["sounds_enabled"] = bool(enabled)
+        self.runtime.save_settings(settings)
+        if self.sound_player:
+            self.sound_player.enabled = bool(enabled)
+
+    def repair(self) -> None:
+        self.controller.repair_models()
+
+    def open_diagnostics(self) -> None:
+        import os
+        os.startfile(self.runtime.data_dir())
+
+
+class VoxKeyShell:
+    """Tray-first Qt shell; the HUD never owns focus."""
+
+    def __init__(self, controller, runtime, shutdown) -> None:
+        self.controller, self.runtime, self.shutdown = controller, runtime, shutdown
+        self.hud = VoxKeyHud()
+        self.sounds = SoundPlayer(runtime.load_settings()["sounds_enabled"], runtime.logger())
+        self.actions = SettingsActions(controller, runtime, self.sounds)
+        self.settings = self._make_settings()
+        self.tray = QSystemTrayIcon(QApplication.style().standardIcon(QApplication.style().SP_ComputerIcon))
+        menu = QMenu()
+        menu.addAction("Open settings", self.show_settings)
+        self.sound_action = menu.addAction("Sounds on")
+        self.sound_action.setCheckable(True)
+        self.sound_action.setChecked(self.sounds.enabled)
+        self.sound_action.toggled.connect(self.actions.set_sounds_enabled)
+        menu.addAction("Repair models", self.actions.repair)
+        menu.addAction("Open diagnostics", self.actions.open_diagnostics)
+        menu.addSeparator()
+        menu.addAction("Quit VoxKey", self.shutdown)
+        self.tray.setContextMenu(menu)
+        self.tray.setToolTip("VoxKey — local dictation")
+        self.tray.show()
+
+    def _make_settings(self) -> QDialog:
+        dialog = QDialog()
+        dialog.setWindowTitle("VoxKey settings")
+        layout = QVBoxLayout(dialog)
+        title = QLabel("VoxKey")
+        title.setFont(QFont("Segoe UI", 18, QFont.DemiBold))
+        layout.addWidget(title)
+        layout.addWidget(QLabel("Private local dictation. Hold Right Ctrl to speak."))
+        self.health = QLabel()
+        layout.addWidget(self.health)
+        checkbox = QCheckBox("Play voice feedback sounds")
+        checkbox.setChecked(self.sounds.enabled)
+        checkbox.toggled.connect(self.actions.set_sounds_enabled)
+        checkbox.toggled.connect(self.sound_action.setChecked)
+        layout.addWidget(checkbox)
+        repair = QPushButton("Repair models")
+        repair.clicked.connect(self.actions.repair)
+        layout.addWidget(repair)
+        diagnostics = QPushButton("Open diagnostics folder")
+        diagnostics.clicked.connect(self.actions.open_diagnostics)
+        layout.addWidget(diagnostics)
+        dialog.resize(400, 220)
+        return dialog
+
+    def show_settings(self) -> None:
+        self.settings.show()
+        self.settings.raise_()
+        self.settings.activateWindow()
+
+    def handle_event(self, event: UiEvent) -> None:
+        self.hud.show_event(event)
+        cue = SoundCue.for_event(event)
+        self.sounds.play(cue)
+        if event.kind == "state_changed" and event.state:
+            detail = event.detail or "Ready for local dictation."
+            self.health.setText(f"Status: {event.state.value} — {detail}")
+
+    def close(self) -> None:
+        self.hud.hide()
+        self.settings.hide()
+        self.tray.hide()
 
 
 def create_qt_application() -> QApplication:
