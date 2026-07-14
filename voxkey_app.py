@@ -18,7 +18,7 @@ from scipy.io.wavfile import write
 
 from speech_models import SpeechModelManager
 from voxkey_events import EventBus, UiEvent
-from ui import VoxKeyControlCenter
+from voxkey_ui import VoxKeyShell, create_qt_application
 from voxkey_controller import VoxKeyController
 from voxkey_runtime import AppState, VoxKeyRuntime
 from writing_model import WritingModelClient
@@ -253,9 +253,16 @@ class HoldToDictateService:
                     pass
 
 
+def dispatch_ui_events(events: EventBus, shell: VoxKeyShell) -> None:
+    """Run in Qt's main thread; pipeline workers only publish immutable events."""
+    for event in events.drain():
+        shell.handle_event(event)
+
+
 def main() -> None:
     if not claim_single_instance():
         return
+    app = create_qt_application()
     runtime = VoxKeyRuntime()
     settings = runtime.load_settings()
     speech = SpeechModelManager(
@@ -264,24 +271,42 @@ def main() -> None:
     writer = WritingModelClient(settings["ollama_model"])
     logger = runtime.logger()
     logger.info("VoxKey starting")
-    controller = VoxKeyController(speech, writer, paste=paste_polished_text, logger=logger)
+    events = EventBus()
+    controller = VoxKeyController(
+        speech, writer, paste=paste_polished_text, logger=logger, events=events
+    )
     controller.start()
-    center = VoxKeyControlCenter(controller, runtime)
-    service = HoldToDictateService(controller, runtime, logger=logger)
+    service = HoldToDictateService(controller, runtime, logger=logger, events=events)
+    stopped = False
+
+    def shutdown() -> None:
+        nonlocal stopped
+        if stopped:
+            return
+        stopped = True
+        logger.info("VoxKey shutting down")
+        service.stop()
+        shell.close()
+        app.quit()
+
+    shell = VoxKeyShell(controller, runtime, shutdown)
     service.start()
 
+    from PySide6.QtCore import QTimer
+
+    timer = QTimer()
+    timer.setInterval(30)
+    timer.timeout.connect(service.tick)
+    timer.timeout.connect(lambda: dispatch_ui_events(events, shell))
+    timer.start()
+    app.aboutToQuit.connect(shutdown)
     try:
-        while center.running:
-            service.tick()
-            center.process_events()
-            time.sleep(0.03)
+        app.exec()
     except KeyboardInterrupt:
-        pass
+        shutdown()
     finally:
-        service.stop()
+        shutdown()
 
 
 if __name__ == "__main__":
-    import tkinter as tk
-
     main()
