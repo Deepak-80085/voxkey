@@ -28,7 +28,7 @@ jobs:
       - name: Package
         run: |
           pyinstaller --clean --noconfirm VoxKey.spec
-          python tests/test_packaging.py dist/VoxKey
+          python tests/test_voxkey_packaging.py dist/VoxKey
           iscc installer/VoxKey.iss
           $hash = (Get-FileHash release/VoxKey-Setup-2.1.0.exe -Algorithm SHA256).Hash
           "$hash  VoxKey-Setup-2.1.0.exe" | Set-Content release/VoxKey-Setup-2.1.0.exe.sha256
