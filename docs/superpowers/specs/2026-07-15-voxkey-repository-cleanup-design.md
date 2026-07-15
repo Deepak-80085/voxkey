@@ -77,6 +77,7 @@ tests\test_hotkey_service.py
 tests\test_paste.py
 tests\test_runtime_and_refiner.py
 tests\test_startup.py
+tests\test_ui_state.py
 ```
 
 ## Packaging Validation
@@ -123,8 +124,8 @@ The cleanup is complete only when all of the following pass from `E:\voxkey`:
 4. The VoxKey-specific frozen-package validator passes.
 5. Inno Setup builds the installer successfully.
 6. Git remote and branch configuration point only to the VoxKey repository.
-7. Temporarily making `E:\simplespeech` unavailable does not affect tests,
-   packaging, or application startup from `E:\voxkey`.
+7. `git-dir` and `git-common-dir` both resolve inside `E:\voxkey\.git`, and
+   removing the old worktree does not affect tests or packaging in `E:\voxkey`.
 
 ## Non-Goals
 
