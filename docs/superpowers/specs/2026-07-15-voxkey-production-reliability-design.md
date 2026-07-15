@@ -67,4 +67,3 @@ repeated dictations, capture failure cleanup, quit, and restart.
 4. Tests cannot add entries to the installed user's log.
 5. Capture failures close the microphone and hide the orb.
 6. VoxKey quits and restarts cleanly after repeated dictations.
-
