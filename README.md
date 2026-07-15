@@ -2,7 +2,9 @@
 
 **Private, local voice typing for Windows.** Hold **Right Ctrl**, speak naturally, release, and VoxKey pastes polished English text back into the app you were using.
 
-VoxKey is designed to remain out of sight until you dictate: a Siri-inspired voice HUD appears while listening and processing, then disappears after a successful paste.
+VoxKey stays out of sight while idle. A small animated orb appears only while
+Right Ctrl is held; it disappears immediately on release while transcription,
+polishing, and paste continue locally in the background.
 
 ## Local-first by design
 
@@ -36,7 +38,9 @@ The tray menu opens settings, toggles sounds, repairs models, opens diagnostics,
 
 - Windows secure-desktop screens (lock screen, UAC prompts, Ctrl+Alt+Del) cannot accept dictation.
 - Windows may block input into an elevated application when VoxKey is not elevated. Run VoxKey as administrator only when you specifically need to dictate into an administrator-run app.
-- The fixed v0.1.0 dictation trigger is Right Ctrl. Configurable hotkeys, history, vocabulary editor, autostart, onboarding, and per-app controls are planned for v0.2.0.
+- Right Ctrl is currently the fixed dictation trigger. Configurable hotkeys,
+  microphone selection, vocabulary editing, autostart, and onboarding are not
+  implemented yet.
 
 ## Diagnostics and privacy
 

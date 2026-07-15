@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Show the compact animated orb only while Right Ctrl is held.
+- Use the bundled start and successful-paste MP3 cues.
+- Keep the local Ollama writer resident between dictations to reduce warm latency.
+- Remove inherited SimpleSpeech source, tests, installer, and packaging configuration.
+
+### Fixed
+- Log separate transcription, polishing, and total pipeline timings.
+
 ## [2.1.0] - 2026-07-14
 
 ### Added
