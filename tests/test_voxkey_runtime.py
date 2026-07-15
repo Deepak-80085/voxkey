@@ -1,4 +1,5 @@
 import tempfile
+import sys
 import threading
 import unittest
 from pathlib import Path
@@ -68,8 +69,9 @@ class VoxKeyRuntimeTests(unittest.TestCase):
                     for handler in logger.handlers:
                         handler.close()
 
-    def test_worker_exception_hook_writes_traceback_to_local_log(self):
-        original_hook = threading.excepthook
+    def test_unhandled_exception_hooks_write_tracebacks_to_local_log(self):
+        original_sys_hook = sys.excepthook
+        original_thread_hook = threading.excepthook
         runtime = None
         try:
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
@@ -87,16 +89,19 @@ class VoxKeyRuntimeTests(unittest.TestCase):
                                 thread=SimpleNamespace(name="test-worker"),
                             )
                         )
+                        sys.excepthook(type(error), error, error.__traceback__)
                     for handler in runtime.logger().handlers:
                         handler.flush()
                     contents = (runtime.data_dir() / "voxkey.log").read_text(encoding="utf-8")
         finally:
-            threading.excepthook = original_hook
+            sys.excepthook = original_sys_hook
+            threading.excepthook = original_thread_hook
             if runtime:
                 for handler in runtime.logger().handlers:
                     handler.close()
 
         self.assertIn("Unhandled exception in thread test-worker", contents)
+        self.assertIn("Unhandled exception in main thread", contents)
         self.assertIn("RuntimeError: worker exploded", contents)
 
 

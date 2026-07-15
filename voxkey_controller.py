@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -30,6 +31,7 @@ class VoxKeyController:
         self.clock = clock
         self.state = AppState.STARTING
         self.reason = None
+        self._validation_lock = threading.Lock()
 
     def _emit(
         self,
@@ -50,28 +52,27 @@ class VoxKeyController:
         self.on_state(state, reason)
 
     def start(self) -> None:
-        self._set_state(AppState.VALIDATING)
-        speech_status = self.speech.health_check()
-        if not speech_status.ready:
-            self._set_state(AppState.NEEDS_REPAIR, speech_status.reason)
-            return
-        writer_status = self.writer.health_check()
-        if not writer_status.ready:
-            self._set_state(AppState.NEEDS_REPAIR, writer_status.reason)
-            return
-        self._set_state(AppState.READY)
+        self._validate(self.speech.health_check)
 
     def repair_models(self) -> None:
-        self._set_state(AppState.VALIDATING)
-        speech_status = self.speech.repair()
-        if not speech_status.ready:
-            self._set_state(AppState.NEEDS_REPAIR, speech_status.reason)
+        self._validate(self.speech.repair)
+
+    def _validate(self, speech_check) -> None:
+        if not self._validation_lock.acquire(blocking=False):
             return
-        writer_status = self.writer.health_check()
-        if not writer_status.ready:
-            self._set_state(AppState.NEEDS_REPAIR, writer_status.reason)
-            return
-        self._set_state(AppState.READY)
+        try:
+            self._set_state(AppState.VALIDATING)
+            speech_status = speech_check()
+            if not speech_status.ready:
+                self._set_state(AppState.NEEDS_REPAIR, speech_status.reason)
+                return
+            writer_status = self.writer.health_check()
+            if not writer_status.ready:
+                self._set_state(AppState.NEEDS_REPAIR, writer_status.reason)
+                return
+            self._set_state(AppState.READY)
+        finally:
+            self._validation_lock.release()
 
     def can_dictate(self) -> bool:
         return self.state is AppState.READY

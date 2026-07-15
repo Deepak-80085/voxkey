@@ -51,13 +51,14 @@ class SpeechModelManager:
     def _model_directory(self) -> Path:
         return self.runtime.models_dir() / "speech"
 
-    def _ensure_model(self) -> Path:
+    def _ensure_model(self, force_download: bool = False) -> Path:
         model_dir = self._model_directory()
-        if self._valid_model_directory(model_dir):
+        if self._valid_model_directory(model_dir) and not force_download:
             return model_dir
         self.downloader(
             repo_id=MODEL_REPOSITORY,
             local_dir=str(model_dir),
+            force_download=force_download,
         )
         return model_dir
 
@@ -101,9 +102,9 @@ class SpeechModelManager:
             compute_type=compute_type,
         )
 
-    def health_check(self) -> SpeechModelStatus:
+    def health_check(self, force_download: bool = False) -> SpeechModelStatus:
         try:
-            model_dir = self._ensure_model()
+            model_dir = self._ensure_model(force_download=force_download)
             if not self._valid_model_directory(model_dir):
                 raise RuntimeError("VoxKey speech model is missing or empty")
 
@@ -128,7 +129,10 @@ class SpeechModelManager:
     def repair(self) -> SpeechModelStatus:
         self.model = None
         self.device = None
-        return self.health_check()
+        status = self.health_check()
+        if status.ready:
+            return status
+        return self.health_check(force_download=True)
 
     def transcribe(self, audio_path: Path) -> str:
         if self.model is None:

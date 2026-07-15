@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 class SettingsActionsTests(unittest.TestCase):
@@ -13,12 +13,17 @@ class SettingsActionsTests(unittest.TestCase):
 
         self.assertFalse(runtime.save_settings.call_args.args[0]["sounds_enabled"])
 
-    def test_repair_action_delegates_to_controller(self):
+    def test_repair_action_runs_controller_repair_on_a_daemon_thread(self):
         from voxkey_ui import SettingsActions
 
         controller = Mock()
-        SettingsActions(controller, Mock()).repair()
-        controller.repair_models.assert_called_once_with()
+        with patch("voxkey_ui.threading.Thread") as thread:
+            worker = thread.return_value
+            SettingsActions(controller, Mock()).repair()
+
+        thread.assert_called_once_with(target=controller.repair_models, daemon=True)
+        worker.start.assert_called_once_with()
+        controller.repair_models.assert_not_called()
 
 
 if __name__ == "__main__":

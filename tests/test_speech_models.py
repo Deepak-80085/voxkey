@@ -11,6 +11,7 @@ class SpeechModelTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.runtime = VoxKeyRuntime()
+        self.runtime.logger = Mock(return_value=Mock())
         self.model_dir = Path(self.temp_dir.name) / "models" / "speech"
         self.model_dir.mkdir(parents=True)
         (self.model_dir / "model.bin").write_bytes(b"valid model")
@@ -97,6 +98,44 @@ class SpeechModelTests(unittest.TestCase):
         self.assertIsNone(status.device)
         self.assertIn("repair", status.reason.lower())
         loader.assert_not_called()
+
+    def test_repair_forces_download_to_replace_a_non_empty_corrupt_model(self):
+        (self.model_dir / "model.bin").write_bytes(b"corrupt")
+
+        def download(**_kwargs):
+            (self.model_dir / "model.bin").write_bytes(b"repaired")
+
+        def load(**_kwargs):
+            if (self.model_dir / "model.bin").read_bytes() != b"repaired":
+                raise RuntimeError("corrupt model")
+            return Mock()
+
+        downloader = Mock(side_effect=download)
+        manager = SpeechModelManager(
+            self.runtime,
+            model_loader=Mock(side_effect=load),
+            downloader=downloader,
+            cuda_checker=lambda: [],
+        )
+
+        status = manager.repair()
+
+        self.assertTrue(status.ready)
+        self.assertTrue(downloader.call_args.kwargs["force_download"])
+
+    def test_repair_reuses_a_healthy_speech_model_without_downloading(self):
+        downloader = Mock()
+        manager = SpeechModelManager(
+            self.runtime,
+            model_loader=Mock(return_value=Mock()),
+            downloader=downloader,
+            cuda_checker=lambda: [],
+        )
+
+        status = manager.repair()
+
+        self.assertTrue(status.ready)
+        downloader.assert_not_called()
 
 
 if __name__ == "__main__":

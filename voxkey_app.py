@@ -115,21 +115,41 @@ class Recorder:
             if self.stream is not None:
                 return False
             self.chunks = []
-            self.stream = sd.InputStream(
+            stream = sd.InputStream(
                 samplerate=SAMPLE_RATE, channels=1, dtype="int16", callback=self._callback
             )
-            self.stream.start()
+            try:
+                stream.start()
+            except Exception:
+                try:
+                    stream.close()
+                finally:
+                    self.chunks = []
+                raise
+            self.stream = stream
         return True
+
+    @staticmethod
+    def _stop_stream(stream) -> None:
+        error = None
+        try:
+            stream.stop()
+        except Exception as exc:
+            error = exc
+        try:
+            stream.close()
+        except Exception as exc:
+            error = error or exc
+        if error:
+            raise error
 
     def stop_and_save(self) -> Path:
         with self.lock:
             stream, self.stream = self.stream, None
+            chunks, self.chunks = self.chunks, []
         if stream is None:
             raise RuntimeError("No active recording")
-        stream.stop()
-        stream.close()
-        with self.lock:
-            chunks, self.chunks = self.chunks, []
+        self._stop_stream(stream)
         if not chunks:
             raise RuntimeError("No audio captured")
         path = self.recordings_dir / f"recording-{uuid.uuid4().hex}.wav"
@@ -140,8 +160,10 @@ class Recorder:
         with self.lock:
             stream, self.stream, self.chunks = self.stream, None, []
         if stream is not None:
-            stream.stop()
-            stream.close()
+            try:
+                self._stop_stream(stream)
+            except Exception:
+                pass
 
 
 class HoldToDictateService:
@@ -276,7 +298,7 @@ def main() -> None:
     controller = VoxKeyController(
         speech, writer, paste=paste_polished_text, logger=logger, events=events
     )
-    controller.start()
+    threading.Thread(target=controller.start, daemon=True).start()
     service = HoldToDictateService(controller, runtime, logger=logger, events=events)
     stopped = False
 

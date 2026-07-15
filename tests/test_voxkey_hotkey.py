@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from pynput import keyboard
-from voxkey_app import HoldToDictateService
+from voxkey_app import HoldToDictateService, Recorder as AudioRecorder
 from voxkey_events import EventBus
 from voxkey_runtime import AppState, VoxKeyRuntime
 
@@ -66,6 +66,46 @@ class VoxKeyHotkeyTests(unittest.TestCase):
             service.tick()
 
         self.assertEqual(events.drain()[-1].kind, "capture_started")
+
+    def test_recorder_closes_stream_when_start_fails(self):
+        stream = Mock()
+        stream.start.side_effect = RuntimeError("start failed")
+        recorder = AudioRecorder(Path("."))
+
+        with patch("voxkey_app.sd.InputStream", return_value=stream):
+            with self.assertRaisesRegex(RuntimeError, "start failed"):
+                recorder.start()
+
+        stream.close.assert_called_once_with()
+        self.assertIsNone(recorder.stream)
+        self.assertEqual(recorder.chunks, [])
+
+    def test_recorder_closes_stream_and_clears_audio_when_stop_fails(self):
+        stream = Mock()
+        stream.stop.side_effect = RuntimeError("stop failed")
+        recorder = AudioRecorder(Path("."))
+        recorder.stream = stream
+        recorder.chunks = [Mock()]
+
+        with self.assertRaisesRegex(RuntimeError, "stop failed"):
+            recorder.stop_and_save()
+
+        stream.close.assert_called_once_with()
+        self.assertIsNone(recorder.stream)
+        self.assertEqual(recorder.chunks, [])
+
+    def test_recorder_abort_suppresses_stream_errors_after_cleanup(self):
+        stream = Mock()
+        stream.stop.side_effect = RuntimeError("stop failed")
+        recorder = AudioRecorder(Path("."))
+        recorder.stream = stream
+        recorder.chunks = [Mock()]
+
+        recorder.abort()
+
+        stream.close.assert_called_once_with()
+        self.assertIsNone(recorder.stream)
+        self.assertEqual(recorder.chunks, [])
 
 
 if __name__ == "__main__":

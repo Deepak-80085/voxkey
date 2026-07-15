@@ -41,6 +41,7 @@ class VoxKeyUiTests(unittest.TestCase):
 
         self.assertTrue(should_render_hud(UiEvent("capture_started", AppState.LISTENING)))
         self.assertTrue(should_render_hud(UiEvent("capture_stopped", AppState.TRANSCRIBING)))
+        self.assertTrue(should_render_hud(UiEvent("capture_failed", AppState.NEEDS_REPAIR)))
         self.assertFalse(should_render_hud(UiEvent("paste_succeeded", AppState.READY)))
         self.assertFalse(should_render_hud(UiEvent("state_changed", AppState.READY)))
 

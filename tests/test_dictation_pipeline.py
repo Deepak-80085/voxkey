@@ -1,3 +1,4 @@
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
@@ -56,6 +57,30 @@ class DictationPipelineTests(unittest.TestCase):
         self.assertEqual(paste.call_args.args[0], "Hello, Zudio.")
         self.assertEqual(paste.call_args.kwargs["target_hwnd"], 123)
         self.assertEqual(controller.state, AppState.READY)
+
+    def test_validation_ignores_repair_while_startup_check_is_running(self):
+        entered = threading.Event()
+        release = threading.Event()
+        speech, writer = Mock(), Mock()
+
+        def health_check():
+            entered.set()
+            release.wait(timeout=2)
+            return Mock(ready=True, reason=None)
+
+        speech.health_check.side_effect = health_check
+        writer.health_check.return_value = Mock(ready=True, reason=None)
+        controller = VoxKeyController(speech, writer, paste=Mock())
+        startup = threading.Thread(target=controller.start)
+        startup.start()
+        self.assertTrue(entered.wait(timeout=1))
+
+        controller.repair_models()
+        release.set()
+        startup.join(timeout=2)
+
+        speech.repair.assert_not_called()
+        self.assertEqual(speech.health_check.call_count, 1)
 
 
 if __name__ == "__main__":

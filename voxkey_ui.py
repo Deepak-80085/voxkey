@@ -29,7 +29,7 @@ class HudView:
 
 def should_render_hud(event: UiEvent) -> bool:
     """Only a held, active dictation capture controls the transient orb."""
-    return event.kind in {"capture_started", "capture_stopped"}
+    return event.kind in {"capture_started", "capture_stopped", "capture_failed"}
 
 
 def hud_view_for(event: UiEvent) -> HudView:
@@ -179,7 +179,7 @@ class SettingsActions:
             self.sound_player.enabled = bool(enabled)
 
     def repair(self) -> None:
-        self.controller.repair_models()
+        threading.Thread(target=self.controller.repair_models, daemon=True).start()
 
     def open_diagnostics(self) -> None:
         import os
