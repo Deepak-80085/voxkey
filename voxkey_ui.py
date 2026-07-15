@@ -274,7 +274,10 @@ class VoxKeyShell:
         cue = SoundCue.for_event(event)
         self.sounds.play(cue)
         if event.kind == "state_changed" and event.state:
-            detail = event.detail or "Ready for local dictation."
+            detail = event.detail or {
+                AppState.VALIDATING: "Preparing local models. First launch may take a few minutes.",
+                AppState.READY: "Ready for local dictation.",
+            }.get(event.state, "Working locally.")
             self.health.setText(f"Status: {event.state.value} — {detail}")
 
     def close(self) -> None:

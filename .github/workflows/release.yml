@@ -53,23 +53,23 @@ jobs:
         if: env.WINDOWS_CERTIFICATE != ''
         run: |
           .\scripts\sign_windows.ps1 `
-            -Files release\VoxKey-Setup-2.2.1.exe `
+            -Files release\VoxKey-Setup-2.2.2.exe `
             -CertificatePath "$env:RUNNER_TEMP\voxkey.pfx" `
             -CertificatePassword $env:WINDOWS_CERTIFICATE_PASSWORD
       - name: Checksum
         run: |
-          $hash = (Get-FileHash release/VoxKey-Setup-2.2.1.exe -Algorithm SHA256).Hash
-          "$hash  VoxKey-Setup-2.2.1.exe" | Set-Content release/VoxKey-Setup-2.2.1.exe.sha256
+          $hash = (Get-FileHash release/VoxKey-Setup-2.2.2.exe -Algorithm SHA256).Hash
+          "$hash  VoxKey-Setup-2.2.2.exe" | Set-Content release/VoxKey-Setup-2.2.2.exe.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: VoxKey-Windows
           path: |
-            release/VoxKey-Setup-2.2.1.exe
-            release/VoxKey-Setup-2.2.1.exe.sha256
+            release/VoxKey-Setup-2.2.2.exe
+            release/VoxKey-Setup-2.2.2.exe.sha256
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/VoxKey-Setup-2.2.1.exe
-            release/VoxKey-Setup-2.2.1.exe.sha256
+            release/VoxKey-Setup-2.2.2.exe
+            release/VoxKey-Setup-2.2.2.exe.sha256

@@ -15,6 +15,7 @@
 - Remove inherited SimpleSpeech source, tests, installer, and packaging configuration.
 
 ### Fixed
+- Explain first-run local model preparation instead of incorrectly showing the app as ready.
 - Disable Hugging Face console progress in the frozen GUI so first-run speech-model downloads can complete.
 - Run startup validation and repair outside the Qt main thread.
 - Serialize validation and repair attempts.

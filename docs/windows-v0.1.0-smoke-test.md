@@ -5,8 +5,8 @@ Run against the installer-created application, not only the source tree.
 1. Verify the locally built installer checksum. Do not upload it under the
    existing `v2.1.0` release:
    ```powershell
-    Get-FileHash .\VoxKey-Setup-2.2.1.exe -Algorithm SHA256
-    Get-Content .\VoxKey-Setup-2.2.1.exe.sha256
+    Get-FileHash .\VoxKey-Setup-2.2.2.exe -Algorithm SHA256
+    Get-Content .\VoxKey-Setup-2.2.2.exe.sha256
    ```
 2. Install and launch VoxKey. Confirm the tray and settings open immediately
    while startup remains `Validating`, then reaches `Ready` without freezing Qt.

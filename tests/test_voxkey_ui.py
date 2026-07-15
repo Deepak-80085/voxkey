@@ -82,6 +82,23 @@ class VoxKeyUiTests(unittest.TestCase):
         shell.close()
         app.quit()
 
+    def test_validating_status_explains_first_run_setup(self):
+        from unittest.mock import Mock
+        from voxkey_ui import VoxKeyShell, create_qt_application
+
+        app = create_qt_application()
+        runtime = Mock()
+        runtime.load_settings.return_value = {'sounds_enabled': True}
+        runtime.logger.return_value = Mock()
+        shell = VoxKeyShell(Mock(), runtime, lambda: None)
+
+        shell.handle_event(UiEvent('state_changed', AppState.VALIDATING))
+
+        self.assertIn('Preparing local models', shell.health.text())
+        self.assertNotIn('Ready for local dictation', shell.health.text())
+        shell.close()
+        app.quit()
+
 
 if __name__ == "__main__":
     unittest.main()

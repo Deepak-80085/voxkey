@@ -29,7 +29,7 @@ ollama pull qwen3.5:0.8b
 
 ## Install and use
 
-1. Download `VoxKey-Setup-2.2.1.exe` from Releases.
+1. Download `VoxKey-Setup-2.2.2.exe` from Releases.
 2. Install for the current Windows user.
 3. Start VoxKey. It lives in the system tray when ready.
 4. Click into any ordinary app, hold **Right Ctrl** for a moment, speak, then release it.
