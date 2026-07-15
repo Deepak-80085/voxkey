@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
+import threading
 from enum import Enum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -26,6 +28,9 @@ class VoxKeyRuntime:
     """Own VoxKey data rather than relying on an opaque shared model cache."""
 
     app_name = "VoxKey"
+
+    def __init__(self) -> None:
+        self._logger: logging.Logger | None = None
 
     def data_dir(self) -> Path:
         base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
@@ -80,9 +85,9 @@ class VoxKeyRuntime:
         temporary_path.replace(destination)
 
     def logger(self) -> logging.Logger:
-        logger = logging.getLogger(self.app_name)
-        if logger.handlers:
-            return logger
+        if self._logger is not None:
+            return self._logger
+        logger = logging.Logger(self.app_name)
         logger.setLevel(logging.INFO)
         handler = RotatingFileHandler(
             self.data_dir() / "voxkey.log",
@@ -93,4 +98,25 @@ class VoxKeyRuntime:
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         logger.addHandler(handler)
         logger.propagate = False
-        return logger
+        self._logger = logger
+        return self._logger
+
+    def install_exception_logging(self) -> None:
+        logger = self.logger()
+
+        def log_exception(origin, exception_type, exception, traceback) -> None:
+            logger.error(
+                "Unhandled exception in %s",
+                origin,
+                exc_info=(exception_type, exception, traceback),
+            )
+
+        sys.excepthook = lambda exception_type, exception, traceback: log_exception(
+            "main thread", exception_type, exception, traceback
+        )
+        threading.excepthook = lambda args: log_exception(
+            f"thread {args.thread.name if args.thread else 'unknown'}",
+            args.exc_type,
+            args.exc_value,
+            args.exc_traceback,
+        )

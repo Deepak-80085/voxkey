@@ -264,6 +264,7 @@ def main() -> None:
         return
     app = create_qt_application()
     runtime = VoxKeyRuntime()
+    runtime.install_exception_logging()
     settings = runtime.load_settings()
     speech = SpeechModelManager(
         runtime, vocabulary_provider=lambda: runtime.load_settings()["vocabulary"]

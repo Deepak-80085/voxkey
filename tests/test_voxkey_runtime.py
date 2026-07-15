@@ -1,6 +1,8 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from voxkey_runtime import AppState, VoxKeyRuntime
@@ -45,6 +47,57 @@ class VoxKeyRuntimeTests(unittest.TestCase):
                 self.assertTrue(runtime.default_settings()["sounds_enabled"])
                 runtime.save_settings({"sounds_enabled": False})
                 self.assertFalse(runtime.load_settings()["sounds_enabled"])
+
+    def test_each_runtime_logger_writes_to_its_own_data_directory(self):
+        first_logger = second_logger = None
+        try:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as first, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as second:
+                with patch.dict("os.environ", {"LOCALAPPDATA": first}, clear=False):
+                    first_logger = VoxKeyRuntime().logger()
+                with patch.dict("os.environ", {"LOCALAPPDATA": second}, clear=False):
+                    second_logger = VoxKeyRuntime().logger()
+
+                first_path = Path(first_logger.handlers[0].baseFilename)
+                second_path = Path(second_logger.handlers[0].baseFilename)
+
+                self.assertEqual(first_path, Path(first) / "VoxKey" / "voxkey.log")
+                self.assertEqual(second_path, Path(second) / "VoxKey" / "voxkey.log")
+        finally:
+            for logger in (first_logger, second_logger):
+                if logger:
+                    for handler in logger.handlers:
+                        handler.close()
+
+    def test_worker_exception_hook_writes_traceback_to_local_log(self):
+        original_hook = threading.excepthook
+        runtime = None
+        try:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+                with patch.dict("os.environ", {"LOCALAPPDATA": temp_dir}, clear=False):
+                    runtime = VoxKeyRuntime()
+                    runtime.install_exception_logging()
+                    try:
+                        raise RuntimeError("worker exploded")
+                    except RuntimeError as error:
+                        threading.excepthook(
+                            SimpleNamespace(
+                                exc_type=type(error),
+                                exc_value=error,
+                                exc_traceback=error.__traceback__,
+                                thread=SimpleNamespace(name="test-worker"),
+                            )
+                        )
+                    for handler in runtime.logger().handlers:
+                        handler.flush()
+                    contents = (runtime.data_dir() / "voxkey.log").read_text(encoding="utf-8")
+        finally:
+            threading.excepthook = original_hook
+            if runtime:
+                for handler in runtime.logger().handlers:
+                    handler.close()
+
+        self.assertIn("Unhandled exception in thread test-worker", contents)
+        self.assertIn("RuntimeError: worker exploded", contents)
 
 
 if __name__ == "__main__":
