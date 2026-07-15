@@ -1,5 +1,6 @@
+import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from writing_model import WritingModelClient, WritingModelUnavailable
 
@@ -51,6 +52,52 @@ class WritingModelTests(unittest.TestCase):
 
         with self.assertRaises(WritingModelUnavailable):
             client.polish("hello")
+
+    def test_repair_pulls_missing_model_with_local_ollama_cli(self):
+        request = Mock(
+            side_effect=[
+                FakeResponse({"models": []}),
+                FakeResponse({"models": [{"name": "test-model"}]}),
+            ]
+        )
+        run = Mock()
+        client = WritingModelClient(
+            "test-model",
+            request=request,
+            run=run,
+            which=Mock(return_value="ollama.exe"),
+        )
+
+        status = client.repair()
+
+        self.assertTrue(status.ready)
+        self.assertEqual(run.call_args.args[0], ["ollama.exe", "pull", "test-model"])
+
+    def test_repair_does_not_pull_when_model_is_already_available(self):
+        run = Mock()
+        client = WritingModelClient(
+            "test-model",
+            request=Mock(return_value=FakeResponse({"models": [{"name": "test-model"}]})),
+            run=run,
+            which=Mock(return_value="ollama.exe"),
+        )
+
+        self.assertTrue(client.repair().ready)
+        run.assert_not_called()
+
+    def test_repair_explains_when_ollama_is_not_installed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict("os.environ", {"LOCALAPPDATA": temp_dir}, clear=False):
+                client = WritingModelClient(
+                    "test-model",
+                    request=Mock(return_value=FakeResponse({"models": []})),
+                    which=Mock(return_value=None),
+                )
+
+                status = client.repair()
+
+        self.assertFalse(status.ready)
+        self.assertIn("Install Ollama", status.reason)
 
 
 if __name__ == "__main__":

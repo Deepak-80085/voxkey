@@ -11,7 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QEasingCurve, QPoint, Property, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QLabel, QMenu, QPushButton, QStyle, QSystemTrayIcon,
+    QApplication, QCheckBox, QComboBox, QDialog, QLabel, QMenu, QPushButton, QStyle, QSystemTrayIcon,
     QVBoxLayout, QWidget,
 )
 
@@ -166,10 +166,11 @@ class VoxKeyHud(QWidget):
 class SettingsActions:
     """Small testable adapter between settings controls and local runtime."""
 
-    def __init__(self, controller, runtime, sound_player=None) -> None:
+    def __init__(self, controller, runtime, sound_player=None, set_microphone=None) -> None:
         self.controller = controller
         self.runtime = runtime
         self.sound_player = sound_player
+        self._set_microphone = set_microphone
 
     def set_sounds_enabled(self, enabled: bool) -> None:
         settings = dict(self.runtime.load_settings())
@@ -181,6 +182,13 @@ class SettingsActions:
     def repair(self) -> None:
         threading.Thread(target=self.controller.repair_models, daemon=True).start()
 
+    def set_microphone(self, device) -> None:
+        settings = dict(self.runtime.load_settings())
+        settings["microphone"] = device
+        self.runtime.save_settings(settings)
+        if self._set_microphone:
+            self._set_microphone(device)
+
     def open_diagnostics(self) -> None:
         import os
         os.startfile(self.runtime.data_dir())
@@ -189,11 +197,19 @@ class SettingsActions:
 class VoxKeyShell:
     """Tray-first Qt shell; the HUD never owns focus."""
 
-    def __init__(self, controller, runtime, shutdown) -> None:
+    def __init__(
+        self,
+        controller,
+        runtime,
+        shutdown,
+        microphones=(),
+        set_microphone=None,
+    ) -> None:
         self.controller, self.runtime, self.shutdown = controller, runtime, shutdown
+        self.microphones = microphones
         self.hud = VoxKeyHud()
         self.sounds = SoundPlayer(runtime.load_settings()["sounds_enabled"], runtime.logger())
-        self.actions = SettingsActions(controller, runtime, self.sounds)
+        self.actions = SettingsActions(controller, runtime, self.sounds, set_microphone)
         self.tray = QSystemTrayIcon(
             QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         )
@@ -222,6 +238,17 @@ class VoxKeyShell:
         layout.addWidget(QLabel("Private local dictation. Hold Right Ctrl to speak."))
         self.health = QLabel()
         layout.addWidget(self.health)
+        microphone = QComboBox()
+        microphone.addItem("System default microphone", None)
+        for device, name in self.microphones:
+            microphone.addItem(name, device)
+        selected = self.runtime.load_settings().get("microphone")
+        selected_index = microphone.findData(selected)
+        microphone.setCurrentIndex(max(0, selected_index))
+        microphone.currentIndexChanged.connect(
+            lambda _index: self.actions.set_microphone(microphone.currentData())
+        )
+        layout.addWidget(microphone)
         checkbox = QCheckBox("Play voice feedback sounds")
         checkbox.setChecked(self.sounds.enabled)
         checkbox.toggled.connect(self.actions.set_sounds_enabled)

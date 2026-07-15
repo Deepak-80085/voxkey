@@ -3,12 +3,24 @@
 ## [Unreleased]
 
 ### Changed
+- Begin microphone capture immediately on Right Ctrl press and discard short taps.
+- Add live microphone selection with a system-default fallback.
+- Keep `small.en` after local comparison with Distil Large v3 on the target GTX 1650.
+- Add automated local Ollama model repair through the installed CLI.
+- Add a new VoxKey logo and Windows executable version metadata for 2.2.0.
+- Prepare CI to sign the app and installer when certificate secrets are configured.
 - Show the compact animated orb only while Right Ctrl is held.
 - Use the bundled start and successful-paste MP3 cues.
 - Keep the local Ollama writer resident between dictations to reduce warm latency.
 - Remove inherited SimpleSpeech source, tests, installer, and packaging configuration.
 
 ### Fixed
+- Run startup validation and repair outside the Qt main thread.
+- Serialize validation and repair attempts.
+- Replace corrupt speech-model assets during explicit repair.
+- Close microphone streams on start, stop, and shutdown failures.
+- Route capture failures through HUD cleanup.
+- Isolate test logging from installed-user diagnostics and log unhandled exceptions.
 - Log separate transcription, polishing, and total pipeline timings.
 
 ## [2.1.0] - 2026-07-14

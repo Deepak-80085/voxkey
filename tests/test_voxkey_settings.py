@@ -25,6 +25,19 @@ class SettingsActionsTests(unittest.TestCase):
         worker.start.assert_called_once_with()
         controller.repair_models.assert_not_called()
 
+    def test_microphone_selection_persists_and_updates_live_recorder(self):
+        from voxkey_ui import SettingsActions
+
+        runtime = Mock()
+        runtime.load_settings.return_value = {"microphone": None}
+        update_recorder = Mock()
+        actions = SettingsActions(Mock(), runtime, set_microphone=update_recorder)
+
+        actions.set_microphone(3)
+
+        self.assertEqual(runtime.save_settings.call_args.args[0]["microphone"], 3)
+        update_recorder.assert_called_once_with(3)
+
 
 if __name__ == "__main__":
     unittest.main()

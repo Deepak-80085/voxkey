@@ -1,5 +1,9 @@
 # VoxKey
 
+<p align="center">
+  <img src="asset/logo.png" alt="VoxKey logo" width="180">
+</p>
+
 **Private, local voice typing for Windows.** Hold **Right Ctrl**, speak naturally, release, and VoxKey pastes polished English text back into the app you were using.
 
 VoxKey stays out of sight while idle. A small animated orb appears only while
@@ -25,12 +29,14 @@ ollama pull qwen3.5:0.8b
 
 ## Install and use
 
-1. Download `VoxKey-Setup-2.1.0.exe` from Releases.
+1. Download `VoxKey-Setup-2.2.0.exe` from Releases.
 2. Install for the current Windows user.
 3. Start VoxKey. It lives in the system tray when ready.
 4. Click into any ordinary app, hold **Right Ctrl** for a moment, speak, then release it.
 
-The tray menu opens settings, toggles sounds, repairs models, opens diagnostics, and quits VoxKey.
+The tray menu opens settings, selects the microphone, toggles sounds, repairs
+models, opens diagnostics, and quits VoxKey. **Repair models** downloads the
+required writer model automatically when Ollama is installed.
 
 > **Unsigned pre-release:** Until the project is code-signed, Windows SmartScreen may show a warning. Verify the release SHA-256 checksum before installing.
 
@@ -39,7 +45,7 @@ The tray menu opens settings, toggles sounds, repairs models, opens diagnostics,
 - Windows secure-desktop screens (lock screen, UAC prompts, Ctrl+Alt+Del) cannot accept dictation.
 - Windows may block input into an elevated application when VoxKey is not elevated. Run VoxKey as administrator only when you specifically need to dictate into an administrator-run app.
 - Right Ctrl is currently the fixed dictation trigger. Configurable hotkeys,
-  microphone selection, vocabulary editing, autostart, and onboarding are not
+  vocabulary editing, autostart, and a bundled writer runtime are not
   implemented yet.
 
 ## Diagnostics and privacy

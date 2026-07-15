@@ -99,9 +99,21 @@ def paste_polished_text(text: str, target_hwnd=None) -> bool:
     return True
 
 
+def available_input_devices() -> list[tuple[int, str]]:
+    try:
+        return [
+            (index, str(device["name"]))
+            for index, device in enumerate(sd.query_devices())
+            if device["max_input_channels"] > 0
+        ]
+    except Exception:
+        return []
+
+
 class Recorder:
-    def __init__(self, recordings_dir: Path):
+    def __init__(self, recordings_dir: Path, device=None):
         self.recordings_dir = recordings_dir
+        self.device = device
         self.stream = None
         self.chunks = []
         self.lock = threading.Lock()
@@ -116,7 +128,11 @@ class Recorder:
                 return False
             self.chunks = []
             stream = sd.InputStream(
-                samplerate=SAMPLE_RATE, channels=1, dtype="int16", callback=self._callback
+                samplerate=SAMPLE_RATE,
+                channels=1,
+                dtype="int16",
+                callback=self._callback,
+                device=self.device,
             )
             try:
                 stream.start()
@@ -174,9 +190,12 @@ class HoldToDictateService:
         self.runtime = runtime
         self.logger = logger or runtime.logger()
         self.events = events
-        self.recorder = Recorder(runtime.recordings_dir())
+        settings = runtime.load_settings()
+        device = settings.get("microphone") if isinstance(settings, dict) else None
+        self.recorder = Recorder(runtime.recordings_dir(), device=device)
         self.hotkey_down = False
         self.recording = False
+        self.capture_started = False
         self.hotkey_started_at = None
         self.ignore_cycle = False
         self.paste_target_hwnd = None
@@ -197,6 +216,8 @@ class HoldToDictateService:
         if self.listener:
             self.listener.stop()
         self.recorder.abort()
+        self.recording = False
+        self.capture_started = False
         self.jobs.put(None)
         if self.worker.is_alive():
             self.worker.join(timeout=5)
@@ -209,7 +230,15 @@ class HoldToDictateService:
                 self.ignore_cycle = False
                 self.paste_target_hwnd = get_foreground_window_handle()
                 self.logger.info("Right Ctrl pressed; paste target=%s", self.paste_target_hwnd)
-        elif self.hotkey_down and not self.recording:
+                if self.controller.can_dictate():
+                    try:
+                        self.recording = self.recorder.start()
+                    except Exception as exc:
+                        self.logger.exception("Recording start failed")
+                        detail = f"Microphone needs repair: {exc}"
+                        self._emit("capture_failed", AppState.NEEDS_REPAIR, detail)
+                        self.controller._set_state(AppState.NEEDS_REPAIR, detail)
+        elif self.hotkey_down and not self.capture_started:
             self.ignore_cycle = True
 
     def _release(self, key) -> None:
@@ -220,6 +249,11 @@ class HoldToDictateService:
         if not self.recording:
             return
         self.recording = False
+        if not self.capture_started:
+            self.paste_target_hwnd = None
+            self.recorder.abort()
+            return
+        self.capture_started = False
         target_hwnd, self.paste_target_hwnd = self.paste_target_hwnd, None
         try:
             audio_path = self.recorder.stop_and_save()
@@ -232,26 +266,23 @@ class HoldToDictateService:
             self._emit("capture_failed", AppState.NEEDS_REPAIR, detail)
             self.controller._set_state(AppState.NEEDS_REPAIR, detail)
 
+    def set_microphone(self, device) -> None:
+        self.recorder.device = device
+
     def tick(self) -> None:
         if (
             self.controller.can_dictate()
             and self.hotkey_down
-            and not self.recording
+            and self.recording
+            and not self.capture_started
             and not self.ignore_cycle
             and self.hotkey_started_at is not None
             and time.monotonic() - self.hotkey_started_at >= HOLD_TRIGGER_S
         ):
-            try:
-                self.recording = self.recorder.start()
-                if self.recording:
-                    self.logger.info("Recording started")
-                    self._emit("capture_started", AppState.LISTENING)
-                    self.controller._set_state(AppState.LISTENING)
-            except Exception as exc:
-                self.logger.exception("Recording start failed")
-                detail = f"Microphone needs repair: {exc}"
-                self._emit("capture_failed", AppState.NEEDS_REPAIR, detail)
-                self.controller._set_state(AppState.NEEDS_REPAIR, detail)
+            self.capture_started = True
+            self.logger.info("Recording started")
+            self._emit("capture_started", AppState.LISTENING)
+            self.controller._set_state(AppState.LISTENING)
 
     def _work(self) -> None:
         while True:
@@ -312,7 +343,13 @@ def main() -> None:
         shell.close()
         app.quit()
 
-    shell = VoxKeyShell(controller, runtime, shutdown)
+    shell = VoxKeyShell(
+        controller,
+        runtime,
+        shutdown,
+        microphones=available_input_devices(),
+        set_microphone=service.set_microphone,
+    )
     service.start()
 
     from PySide6.QtCore import QTimer

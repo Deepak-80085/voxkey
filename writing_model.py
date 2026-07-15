@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
@@ -24,11 +28,15 @@ class WritingModelClient:
         base_url: str = "http://127.0.0.1:11434",
         request=None,
         post=None,
+        run=None,
+        which=None,
     ):
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
         self.request = request or requests.get
         self.post = post or request or requests.post
+        self.run = run or subprocess.run
+        self.which = which or shutil.which
 
     def health_check(self) -> WritingModelStatus:
         if not self.model_name:
@@ -43,6 +51,32 @@ class WritingModelClient:
             return WritingModelStatus(True, None)
         except Exception:
             return WritingModelStatus(False, "Local Ollama writing model needs repair")
+
+    def repair(self) -> WritingModelStatus:
+        status = self.health_check()
+        if status.ready or not self.model_name:
+            return status
+        executable = self.which("ollama")
+        if not executable:
+            local_app_data = os.environ.get("LOCALAPPDATA")
+            candidate = (
+                Path(local_app_data) / "Programs" / "Ollama" / "ollama.exe"
+                if local_app_data
+                else None
+            )
+            executable = str(candidate) if candidate and candidate.is_file() else None
+        if not executable:
+            return WritingModelStatus(False, "Install Ollama, then repair the local writing model")
+        try:
+            self.run(
+                [executable, "pull", self.model_name],
+                check=True,
+                timeout=1200,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            return WritingModelStatus(False, f"Local Ollama model '{self.model_name}' repair failed")
+        return self.health_check()
 
     def polish(self, transcript: str) -> str:
         text = transcript.strip()

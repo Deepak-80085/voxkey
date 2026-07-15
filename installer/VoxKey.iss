@@ -1,7 +1,7 @@
 ; Build with: ISCC installer\VoxKey.iss
 #define MyAppName "VoxKey"
-#define MyAppVersion "2.1.0"
-#define MyAppPublisher "Deepak"
+#define MyAppVersion "2.2.0"
+#define MyAppPublisher "VoxKey Contributors"
 #define MyAppURL "https://github.com/Deepak-80085/voxkey"
 #define MyAppExeName "VoxKey.exe"
 
@@ -26,6 +26,13 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
+CloseApplications=yes
+RestartApplications=no
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=Private offline voice dictation for Windows
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

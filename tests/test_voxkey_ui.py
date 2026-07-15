@@ -66,14 +66,19 @@ class VoxKeyUiTests(unittest.TestCase):
 
     def test_shell_constructs_its_settings_before_connecting_sound_controls(self):
         from unittest.mock import Mock
+        from PySide6.QtWidgets import QComboBox
         from voxkey_ui import VoxKeyShell, create_qt_application
 
         app = create_qt_application()
         runtime = Mock()
         runtime.load_settings.return_value = {"sounds_enabled": True}
         runtime.logger.return_value = Mock()
-        shell = VoxKeyShell(Mock(), runtime, lambda: None)
+        shell = VoxKeyShell(Mock(), runtime, lambda: None, microphones=[(7, "USB Mic")])
         self.assertIsNotNone(shell.tray)
+        microphone = shell.settings.findChild(QComboBox)
+        self.assertEqual(microphone.itemData(0), None)
+        self.assertEqual(microphone.itemData(1), 7)
+        self.assertEqual(microphone.itemText(1), "USB Mic")
         shell.close()
         app.quit()
 

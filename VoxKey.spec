@@ -37,6 +37,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     icon=['asset\\icon.ico'],
+    version='file_version_info.txt',
 )
 coll = COLLECT(
     exe,

@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from pynput import keyboard
-from voxkey_app import HoldToDictateService, Recorder as AudioRecorder
+from voxkey_app import HoldToDictateService, Recorder as AudioRecorder, available_input_devices
 from voxkey_events import EventBus
 from voxkey_runtime import AppState, VoxKeyRuntime
 
@@ -40,10 +40,12 @@ class VoxKeyHotkeyTests(unittest.TestCase):
 
     def test_right_ctrl_hold_starts_recording(self):
         service = self.make_service()
-        with patch("voxkey_app.time.monotonic", side_effect=[100, 101]):
+        service.recorder = Mock()
+        service.recorder.start.return_value = True
+        with patch("voxkey_app.time.monotonic", return_value=100):
             service._press(keyboard.Key.ctrl_r)
-            service.tick()
 
+        service.recorder.start.assert_called_once_with()
         self.assertTrue(service.recording)
 
     def test_alt_does_not_activate_dictation(self):
@@ -60,12 +62,55 @@ class VoxKeyHotkeyTests(unittest.TestCase):
         runtime.logger.return_value = Mock()
         events = EventBus()
         service = HoldToDictateService(Controller(), runtime, events=events)
-        service.recorder = Recorder()
-        with patch("voxkey_app.time.monotonic", side_effect=[100, 101]):
+        service.recorder = Mock()
+        service.recorder.start.return_value = True
+        with patch("voxkey_app.time.monotonic", return_value=100):
             service._press(keyboard.Key.ctrl_r)
+        self.assertEqual(events.drain(), [])
+        with patch("voxkey_app.time.monotonic", return_value=101):
             service.tick()
 
         self.assertEqual(events.drain()[-1].kind, "capture_started")
+
+    def test_short_right_ctrl_tap_discards_the_primed_recording(self):
+        runtime = Mock(spec=VoxKeyRuntime)
+        runtime.recordings_dir.return_value = Path(".")
+        runtime.logger.return_value = Mock()
+        runtime.load_settings.return_value = {"microphone": None}
+        events = EventBus()
+        service = HoldToDictateService(Controller(), runtime, events=events)
+        service.recorder = Mock()
+        service.recorder.start.return_value = True
+
+        with patch("voxkey_app.time.monotonic", side_effect=[100, 100.1]):
+            service._press(keyboard.Key.ctrl_r)
+            service._release(keyboard.Key.ctrl_r)
+
+        service.recorder.abort.assert_called_once_with()
+        self.assertTrue(service.jobs.empty())
+        self.assertEqual(events.drain(), [])
+
+    def test_recorder_passes_selected_microphone_to_sounddevice(self):
+        stream = Mock()
+        recorder = AudioRecorder(Path("."), device=7)
+
+        with patch("voxkey_app.sd.InputStream", return_value=stream) as input_stream:
+            recorder.start()
+            recorder.abort()
+
+        self.assertEqual(input_stream.call_args.kwargs["device"], 7)
+
+    def test_available_input_devices_returns_only_microphones(self):
+        devices = [
+            {"name": "Speakers", "max_input_channels": 0},
+            {"name": "Microphone", "max_input_channels": 2},
+        ]
+        with patch("voxkey_app.sd.query_devices", return_value=devices):
+            self.assertEqual(available_input_devices(), [(1, "Microphone")])
+
+    def test_microphone_enumeration_failure_falls_back_to_no_device_list(self):
+        with patch("voxkey_app.sd.query_devices", side_effect=RuntimeError("audio unavailable")):
+            self.assertEqual(available_input_devices(), [])
 
     def test_recorder_closes_stream_when_start_fails(self):
         stream = Mock()

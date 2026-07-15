@@ -32,9 +32,30 @@ class VoxKeyPackagingTests(unittest.TestCase):
     def test_voxkey_installer_is_per_user(self):
         contents = (ROOT / "installer" / "VoxKey.iss").read_text(encoding="utf-8")
         self.assertIn('#define MyAppName "VoxKey"', contents)
-        self.assertIn('#define MyAppVersion "2.1.0"', contents)
+        self.assertIn('#define MyAppVersion "2.2.0"', contents)
         self.assertIn('DefaultDirName={localappdata}\\Programs\\{#MyAppName}', contents)
         self.assertIn('Source: "..\\dist\\VoxKey\\*"', contents)
+
+    def test_voxkey_package_has_brand_and_windows_version_metadata(self):
+        spec = (ROOT / "VoxKey.spec").read_text(encoding="utf-8")
+
+        self.assertTrue((ROOT / "asset" / "logo.png").is_file())
+        self.assertTrue((ROOT / "asset" / "icon.ico").is_file())
+        self.assertTrue((ROOT / "file_version_info.txt").is_file())
+        self.assertIn("version='file_version_info.txt'", spec)
+
+    def test_release_workflow_is_signing_ready_for_version_2_2_0(self):
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+        signing_script = (ROOT / "scripts" / "sign_windows.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("VoxKey-Setup-2.2.0.exe", workflow)
+        self.assertIn("WINDOWS_CERTIFICATE", workflow)
+        self.assertIn("signtool.exe", signing_script.lower())
+        self.assertNotIn("VoxKey-Setup-2.1.0.exe", workflow)
 
     def test_frozen_validation_reports_missing_vad_model(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

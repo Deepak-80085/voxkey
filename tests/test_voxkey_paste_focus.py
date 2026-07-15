@@ -32,6 +32,7 @@ class VoxKeyPasteFocusTests(unittest.TestCase):
 
         service = HoldToDictateService(controller, runtime)
         service.recording = True
+        service.capture_started = True
         service.paste_target_hwnd = 1234
         service.recorder.stop_and_save = Mock(return_value="recording.wav")
 
