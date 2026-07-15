@@ -10,12 +10,19 @@ from typing import Callable
 
 from faster_whisper import WhisperModel
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import tqdm as HuggingFaceTqdm
 
 from vocabulary import build_initial_prompt
 from voxkey_runtime import VoxKeyRuntime
 
 MODEL_NAME = "small.en"
 MODEL_REPOSITORY = "Systran/faster-whisper-small.en"
+
+
+class _SilentTqdm(HuggingFaceTqdm):
+    def __init__(self, *args, **kwargs):
+        kwargs['disable'] = True
+        super().__init__(*args, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,7 @@ class SpeechModelManager:
             repo_id=MODEL_REPOSITORY,
             local_dir=str(model_dir),
             force_download=force_download,
+            tqdm_class=_SilentTqdm,
         )
         return model_dir
 

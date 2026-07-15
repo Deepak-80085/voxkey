@@ -85,6 +85,17 @@ class SpeechModelTests(unittest.TestCase):
         self.assertEqual(downloader.call_args.kwargs["repo_id"], "Systran/faster-whisper-small.en")
         self.assertEqual(downloader.call_args.kwargs["local_dir"], str(self.model_dir))
 
+    def test_model_download_disables_console_progress_for_frozen_gui(self):
+        (self.model_dir / 'model.bin').unlink()
+
+        def download(**kwargs):
+            with patch('sys.stderr', None):
+                list(kwargs['tqdm_class']([1]))
+
+        manager = SpeechModelManager(self.runtime, downloader=download)
+
+        manager._ensure_model()
+
     def test_missing_or_empty_model_file_returns_repair_state_not_exception(self):
         loader = Mock()
         manager = SpeechModelManager(self.runtime, model_loader=loader)

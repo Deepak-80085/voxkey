@@ -32,7 +32,7 @@ class VoxKeyPackagingTests(unittest.TestCase):
     def test_voxkey_installer_is_per_user(self):
         contents = (ROOT / "installer" / "VoxKey.iss").read_text(encoding="utf-8")
         self.assertIn('#define MyAppName "VoxKey"', contents)
-        self.assertIn('#define MyAppVersion "2.2.0"', contents)
+        self.assertIn('#define MyAppVersion "2.2.1"', contents)
         self.assertIn('DefaultDirName={localappdata}\\Programs\\{#MyAppName}', contents)
         self.assertIn('Source: "..\\dist\\VoxKey\\*"', contents)
 
@@ -44,7 +44,7 @@ class VoxKeyPackagingTests(unittest.TestCase):
         self.assertTrue((ROOT / "file_version_info.txt").is_file())
         self.assertIn("version='file_version_info.txt'", spec)
 
-    def test_release_workflow_is_signing_ready_for_version_2_2_0(self):
+    def test_release_workflow_is_signing_ready_for_version_2_2_1(self):
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
             encoding="utf-8"
         )
@@ -52,7 +52,7 @@ class VoxKeyPackagingTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("VoxKey-Setup-2.2.0.exe", workflow)
+        self.assertIn("VoxKey-Setup-2.2.1.exe", workflow)
         self.assertIn("WINDOWS_CERTIFICATE", workflow)
         self.assertIn("signtool.exe", signing_script.lower())
         self.assertNotIn("VoxKey-Setup-2.1.0.exe", workflow)
