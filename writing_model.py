@@ -50,39 +50,56 @@ class WritingModelClient:
     def repair(self, progress=None) -> WritingModelStatus:
         report = progress or (lambda _detail: None)
         status = self.health_check()
-        if status.ready or not self.model_name:
+        if not self.model_name:
             return status
-        if not self.runtime_manager:
+        if not status.ready and not self.runtime_manager:
             return WritingModelStatus(False, "VoxKey local writer runtime is unavailable")
         try:
-            self.runtime_manager.ensure_ready(report)
-            status = self.health_check()
-            if status.ready:
+            if not status.ready:
+                self.runtime_manager.ensure_ready(report)
+                status = self.health_check()
+            if not status.ready:
+                report("Downloading local writing model...")
+                response = self.post(
+                    f"{self.base_url}/api/pull",
+                    json={"model": self.model_name, "stream": True},
+                    stream=True,
+                    timeout=1200,
+                )
+                response.raise_for_status()
+                last_percent = -1
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    update = json.loads(line)
+                    if update.get("error"):
+                        raise RuntimeError(str(update["error"]))
+                    completed, total = update.get("completed"), update.get("total")
+                    if completed is not None and total:
+                        percent = min(100, int(completed) * 100 // int(total))
+                        if percent != last_percent:
+                            report(f"Downloading local writing model: {percent}%")
+                            last_percent = percent
+                status = self.health_check()
+            if not status.ready:
                 return status
-            report("Downloading local writing model...")
+            report("Loading local writing model...")
             response = self.post(
-                f"{self.base_url}/api/pull",
-                json={"model": self.model_name, "stream": True},
-                stream=True,
-                timeout=1200,
+                f"{self.base_url}/api/generate",
+                json={
+                    "model": self.model_name,
+                    "prompt": "ready",
+                    "stream": False,
+                    "think": False,
+                    "keep_alive": "24h",
+                    "options": {"num_predict": 1, "temperature": 0},
+                },
+                timeout=300,
             )
             response.raise_for_status()
-            last_percent = -1
-            for line in response.iter_lines():
-                if not line:
-                    continue
-                update = json.loads(line)
-                if update.get("error"):
-                    raise RuntimeError(str(update["error"]))
-                completed, total = update.get("completed"), update.get("total")
-                if completed is not None and total:
-                    percent = min(100, int(completed) * 100 // int(total))
-                    if percent != last_percent:
-                        report(f"Downloading local writing model: {percent}%")
-                        last_percent = percent
         except Exception:
             return WritingModelStatus(False, "VoxKey local writer runtime setup failed")
-        return self.health_check()
+        return status
 
     def polish(self, transcript: str) -> str:
         text = transcript.strip()
@@ -111,7 +128,7 @@ class WritingModelClient:
                     "keep_alive": "24h",
                     "options": {"num_predict": 120, "temperature": 0},
                 },
-                timeout=20,
+                timeout=300,
             )
             response.raise_for_status()
             polished = str(response.json().get("response", "")).strip()

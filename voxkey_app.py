@@ -65,6 +65,15 @@ def claim_single_instance() -> bool:
     _instance_mutex_handle = _kernel32.CreateMutexW(None, False, _INSTANCE_MUTEX_NAME)
     return bool(_instance_mutex_handle) and _kernel32.GetLastError() != 183
 
+def notify_already_running() -> None:
+    if _user32 is not None:
+        _user32.MessageBoxW(
+            None,
+            "VoxKey is already running in the system tray.",
+            "VoxKey",
+            0x40,
+        )
+
 
 def get_foreground_window_handle() -> int | None:
     if _user32 is None:
@@ -348,6 +357,7 @@ def dispatch_ui_events(events: EventBus, shell: VoxKeyShell) -> None:
 
 def main() -> None:
     if not claim_single_instance():
+        notify_already_running()
         return
     app = create_qt_application()
     runtime = VoxKeyRuntime()

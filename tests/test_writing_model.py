@@ -48,6 +48,7 @@ class WritingModelTests(unittest.TestCase):
         self.assertFalse(payload["think"])
         self.assertEqual(payload["keep_alive"], "24h")
         self.assertEqual(payload["options"]["num_predict"], 120)
+        self.assertEqual(request.call_args.kwargs["timeout"], 300)
 
     def test_empty_writer_output_is_unavailable_not_raw_text(self):
         request = Mock(return_value=FakeResponse({"response": "   "}))
@@ -55,6 +56,25 @@ class WritingModelTests(unittest.TestCase):
 
         with self.assertRaises(WritingModelUnavailable):
             client.polish("hello")
+
+    def test_repair_warms_an_available_model_before_reporting_ready(self):
+        request = Mock(return_value=FakeResponse({"models": [{"name": "test-model"}]}))
+        post = Mock(return_value=FakeResponse({"response": "ready"}))
+        progress = []
+        client = WritingModelClient(
+            "test-model",
+            request=request,
+            post=post,
+            runtime_manager=Mock(),
+        )
+
+        status = client.repair(progress.append)
+
+        self.assertTrue(status.ready)
+        self.assertTrue(post.call_args.args[0].endswith("/api/generate"))
+        self.assertEqual(post.call_args.kwargs["timeout"], 300)
+        self.assertEqual(post.call_args.kwargs["json"]["options"]["num_predict"], 1)
+        self.assertTrue(any("Loading local writing model" in detail for detail in progress))
 
     def test_repair_starts_managed_runtime_and_pulls_missing_model(self):
         request = Mock(
@@ -83,8 +103,10 @@ class WritingModelTests(unittest.TestCase):
 
         self.assertTrue(status.ready)
         runtime_manager.ensure_ready.assert_called_once()
-        self.assertTrue(post.call_args.args[0].endswith('/api/pull'))
-        self.assertEqual(post.call_args.kwargs['json'], {'model': 'test-model', 'stream': True})
+        pull = post.call_args_list[0]
+        self.assertTrue(pull.args[0].endswith('/api/pull'))
+        self.assertEqual(pull.kwargs['json'], {'model': 'test-model', 'stream': True})
+        self.assertTrue(post.call_args_list[-1].args[0].endswith('/api/generate'))
         self.assertTrue(any('50%' in detail for detail in progress))
 
     def test_repair_does_not_pull_when_model_is_already_available(self):
@@ -117,7 +139,7 @@ class WritingModelTests(unittest.TestCase):
         self.assertTrue(client.repair().ready)
 
         runtime_manager.ensure_ready.assert_called_once()
-        post.assert_not_called()
+        self.assertTrue(post.call_args.args[0].endswith('/api/generate'))
 
     def test_repair_explains_when_managed_runtime_install_fails(self):
         runtime_manager = Mock()

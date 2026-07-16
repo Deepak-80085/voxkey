@@ -37,8 +37,8 @@ class DictationPipelineTests(unittest.TestCase):
 
         self.assertFalse(result)
         paste.assert_not_called()
-        self.assertEqual(controller.state, AppState.NEEDS_REPAIR)
-        self.assertIn("writer", controller.reason)
+        self.assertEqual(controller.state, AppState.READY)
+        self.assertIsNone(controller.reason)
 
     def test_successful_processing_transcribes_polishes_and_pastes_once(self):
         speech = Mock()

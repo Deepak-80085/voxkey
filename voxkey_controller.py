@@ -9,6 +9,7 @@ from typing import Callable
 
 from voxkey_events import EventBus, UiEvent
 from voxkey_runtime import AppState
+from writing_model import WritingModelUnavailable
 
 
 class VoxKeyController:
@@ -126,6 +127,13 @@ class VoxKeyController:
                 self._emit("paste_succeeded", AppState.READY, elapsed_ms=elapsed_ms)
             self._set_state(AppState.READY)
             return bool(pasted)
+        except WritingModelUnavailable as exc:
+            detail = str(exc) or "Local writer temporarily unavailable"
+            if self.logger:
+                self.logger.exception("Dictation processing failed")
+            self._emit("pipeline_failed", AppState.READY, detail)
+            self._set_state(AppState.READY)
+            return False
         except Exception as exc:
             detail = str(exc) or "Dictation needs repair"
             if self.logger:
