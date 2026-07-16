@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from voxkey_events import UiEvent
 from voxkey_runtime import AppState
@@ -66,6 +67,7 @@ class VoxKeyUiTests(unittest.TestCase):
 
     def test_shell_constructs_its_settings_before_connecting_sound_controls(self):
         from unittest.mock import Mock
+        from PySide6.QtGui import QIcon
         from PySide6.QtWidgets import QComboBox
         from voxkey_ui import VoxKeyShell, create_qt_application
 
@@ -75,6 +77,11 @@ class VoxKeyUiTests(unittest.TestCase):
         runtime.logger.return_value = Mock()
         shell = VoxKeyShell(Mock(), runtime, lambda: None, microphones=[(7, "USB Mic")])
         self.assertIsNotNone(shell.tray)
+        expected_icon = QIcon(str(Path(__file__).resolve().parents[1] / "asset" / "icon.ico"))
+        self.assertEqual(
+            shell.tray.icon().pixmap(32, 32).toImage(),
+            expected_icon.pixmap(32, 32).toImage(),
+        )
         microphone = shell.settings.findChild(QComboBox)
         self.assertEqual(microphone.itemData(0), None)
         self.assertEqual(microphone.itemData(1), 7)

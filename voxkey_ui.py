@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QEasingCurve, QPoint, Property, QPropertyAnimation, Qt
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QLabel, QMenu, QPushButton, QStyle, QSystemTrayIcon,
+    QApplication, QCheckBox, QComboBox, QDialog, QLabel, QMenu, QPushButton, QSystemTrayIcon,
     QVBoxLayout, QWidget,
 )
 
@@ -245,9 +245,8 @@ class VoxKeyShell:
             set_hotkey,
             set_autostart,
         )
-        self.tray = QSystemTrayIcon(
-            QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
-        )
+        self.icon = QIcon(str(Path(__file__).resolve().parent / "asset" / "icon.ico"))
+        self.tray = QSystemTrayIcon(self.icon)
         menu = QMenu()
         menu.addAction("Open settings", self.show_settings)
         self.sound_action = menu.addAction("Sounds on")
@@ -266,6 +265,7 @@ class VoxKeyShell:
     def _make_settings(self) -> QDialog:
         dialog = QDialog()
         dialog.setWindowTitle("VoxKey settings")
+        dialog.setWindowIcon(self.icon)
         layout = QVBoxLayout(dialog)
         title = QLabel("VoxKey")
         title.setFont(QFont("Segoe UI", 18, QFont.DemiBold))
