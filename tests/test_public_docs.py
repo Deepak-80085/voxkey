@@ -12,7 +12,11 @@ class PublicRepositoryDocumentationTests(unittest.TestCase):
         privacy = (ROOT / "docs" / "privacy.md").read_text(encoding="utf-8")
         self.assertIn("small.en", readme)
         self.assertIn("qwen3.5:0.8b", readme)
+        self.assertNotIn("ollama pull", readme)
         self.assertIn("No audio or text leaves your computer", privacy)
+        launch = (ROOT / "docs" / "launch.md").read_text(encoding="utf-8")
+        self.assertIn("30-second demo", launch)
+        self.assertIn("beta testers", launch)
 
 
 if __name__ == "__main__":

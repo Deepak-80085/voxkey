@@ -74,17 +74,18 @@ class SpeechModelManager:
         """Reuse Ollama's installed CUDA runtime when it is available locally."""
         if not self.dll_directory_adder:
             return
+        roots = [self.runtime.runtime_dir() / "ollama" / "lib" / "ollama"]
         local_app_data = os.environ.get("LOCALAPPDATA")
-        if not local_app_data:
-            return
-        runtime_root = Path(local_app_data) / "Programs" / "Ollama" / "lib" / "ollama"
-        for directory_name in ("cuda_v12", "mlx_cuda_v13"):
-            directory = runtime_root / directory_name
-            if directory.is_dir():
-                try:
-                    self._dll_directory_handles.append(self.dll_directory_adder(str(directory)))
-                except OSError:
-                    self.logger.exception("Could not add Ollama CUDA runtime directory: %s", directory)
+        if local_app_data:
+            roots.append(Path(local_app_data) / "Programs" / "Ollama" / "lib" / "ollama")
+        for runtime_root in roots:
+            for directory_name in ("cuda_v12", "mlx_cuda_v13"):
+                directory = runtime_root / directory_name
+                if directory.is_dir():
+                    try:
+                        self._dll_directory_handles.append(self.dll_directory_adder(str(directory)))
+                    except OSError:
+                        self.logger.exception("Could not add Ollama CUDA runtime directory: %s", directory)
 
     @staticmethod
     def _missing_cuda_runtime() -> list[str]:

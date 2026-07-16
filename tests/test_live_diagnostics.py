@@ -46,7 +46,7 @@ class LiveDiagnosticsTests(unittest.TestCase):
         service._release(__import__("pynput").keyboard.Key.ctrl_r)
 
         messages = [str(call.args[0]) for call in logger.info.call_args_list]
-        self.assertTrue(any("Right Ctrl pressed" in message for message in messages))
+        self.assertTrue(any("Dictation hotkey pressed" in message for message in messages))
         self.assertTrue(any("Recording started" in message for message in messages))
         self.assertTrue(any("Recording saved" in message for message in messages))
 

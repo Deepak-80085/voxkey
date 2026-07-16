@@ -1,6 +1,6 @@
 ; Build with: ISCC installer\VoxKey.iss
 #define MyAppName "VoxKey"
-#define MyAppVersion "2.2.2"
+#define MyAppVersion "2.3.0"
 #define MyAppPublisher "VoxKey Contributors"
 #define MyAppURL "https://github.com/Deepak-80085/voxkey"
 #define MyAppExeName "VoxKey.exe"
@@ -49,3 +49,13 @@ Name: "{autodesktop}\VoxKey"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopi
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch VoxKey"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\VoxKey"
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'VoxKey');
+end;

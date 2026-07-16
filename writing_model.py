@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
+import json
 from dataclasses import dataclass
-from pathlib import Path
 
 import requests
 
@@ -28,15 +25,13 @@ class WritingModelClient:
         base_url: str = "http://127.0.0.1:11434",
         request=None,
         post=None,
-        run=None,
-        which=None,
+        runtime_manager=None,
     ):
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
         self.request = request or requests.get
         self.post = post or request or requests.post
-        self.run = run or subprocess.run
-        self.which = which or shutil.which
+        self.runtime_manager = runtime_manager
 
     def health_check(self) -> WritingModelStatus:
         if not self.model_name:
@@ -52,30 +47,41 @@ class WritingModelClient:
         except Exception:
             return WritingModelStatus(False, "Local Ollama writing model needs repair")
 
-    def repair(self) -> WritingModelStatus:
+    def repair(self, progress=None) -> WritingModelStatus:
+        report = progress or (lambda _detail: None)
         status = self.health_check()
         if status.ready or not self.model_name:
             return status
-        executable = self.which("ollama")
-        if not executable:
-            local_app_data = os.environ.get("LOCALAPPDATA")
-            candidate = (
-                Path(local_app_data) / "Programs" / "Ollama" / "ollama.exe"
-                if local_app_data
-                else None
-            )
-            executable = str(candidate) if candidate and candidate.is_file() else None
-        if not executable:
-            return WritingModelStatus(False, "Install Ollama, then repair the local writing model")
+        if not self.runtime_manager:
+            return WritingModelStatus(False, "VoxKey local writer runtime is unavailable")
         try:
-            self.run(
-                [executable, "pull", self.model_name],
-                check=True,
+            self.runtime_manager.ensure_ready(report)
+            status = self.health_check()
+            if status.ready:
+                return status
+            report("Downloading local writing model...")
+            response = self.post(
+                f"{self.base_url}/api/pull",
+                json={"model": self.model_name, "stream": True},
+                stream=True,
                 timeout=1200,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            response.raise_for_status()
+            last_percent = -1
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                update = json.loads(line)
+                if update.get("error"):
+                    raise RuntimeError(str(update["error"]))
+                completed, total = update.get("completed"), update.get("total")
+                if completed is not None and total:
+                    percent = min(100, int(completed) * 100 // int(total))
+                    if percent != last_percent:
+                        report(f"Downloading local writing model: {percent}%")
+                        last_percent = percent
         except Exception:
-            return WritingModelStatus(False, f"Local Ollama model '{self.model_name}' repair failed")
+            return WritingModelStatus(False, "VoxKey local writer runtime setup failed")
         return self.health_check()
 
     def polish(self, transcript: str) -> str:

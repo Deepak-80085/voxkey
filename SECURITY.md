@@ -10,4 +10,4 @@ Do not publish security-sensitive reproduction details in a public issue. Contac
 
 ## Trust boundary
 
-VoxKey is intentionally local-first, but it sends keyboard input and temporarily uses the Windows clipboard to paste polished text. Review the source and verify published installer checksums before installing. Releases are unsigned until a code-signing certificate is configured.
+VoxKey is intentionally local-first, but it sends keyboard input and temporarily uses the Windows clipboard to paste polished text. Review the source and verify published installer checksums before installing. Existing releases may be unsigned; future tagged releases are blocked unless the application and installer are Authenticode-signed.

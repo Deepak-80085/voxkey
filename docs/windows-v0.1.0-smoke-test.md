@@ -1,36 +1,55 @@
-# VoxKey Windows reliability smoke test
+# VoxKey Windows acceptance test
 
-Run against the installer-created application, not only the source tree.
+Run this on a disposable or dedicated clean Windows 10/11 x64 account without Ollama installed. The test downloads several gigabytes and removes all VoxKey data during uninstall.
 
-1. Verify the locally built installer checksum. Do not upload it under the
-   existing `v2.1.0` release:
+## Install and trust
+
+1. Verify the installer checksum and Authenticode signature:
+
    ```powershell
-    Get-FileHash .\VoxKey-Setup-2.2.2.exe -Algorithm SHA256
-    Get-Content .\VoxKey-Setup-2.2.2.exe.sha256
+   Get-FileHash .\VoxKey-Setup.exe -Algorithm SHA256
+   Get-AuthenticodeSignature .\VoxKey-Setup.exe | Format-List Status,SignerCertificate
    ```
-2. Install and launch VoxKey. Confirm the tray and settings open immediately
-   while startup remains `Validating`, then reaches `Ready` without freezing Qt.
-3. With Notepad focused, hold Right Ctrl for over 0.28 seconds. Verify only the
-   small orb appears, Notepad keeps focus, and the listening cue plays.
-4. Speak a short English sentence and release Right Ctrl. Verify the orb hides
-   immediately, processing remains invisible, the exact polished result is
-   pasted into Notepad, and the completion cue plays.
-5. Repeat dictation twenty times, including short and long holds. Confirm no
-   stuck orb, stuck microphone, duplicate paste, or unexplained process exit.
-6. Trigger a microphone start or stop failure. Confirm the orb hides, the
-   microphone is released, VoxKey enters `Needs repair`, and the traceback is
-   present in `%LOCALAPPDATA%\VoxKey\voxkey.log`.
-7. Back up the speech model, replace `model.bin` with a non-empty invalid file,
-   and choose tray **Repair models**. Confirm settings remains responsive and
-   repair downloads a fresh model before returning to `Ready`. Restore the
-   backup only if repair fails.
-8. Stop Ollama and dictate once. Confirm no raw transcript is pasted, VoxKey
-   enters `Needs repair`, and restarting Ollama plus **Repair models** restores
-   `Ready`.
-9. Toggle sounds off, restart VoxKey, and confirm the preference persists.
-   Open diagnostics and verify lifecycle timings plus `device=cuda` or the
-   same-model CPU fallback.
-10. Click tray **Quit VoxKey**, verify `VoxKey.exe` exits, then launch it twice.
-    Confirm exactly one instance remains and startup returns to `Ready`.
-11. Run a target as administrator. Verify VoxKey does not crash and document
-    whether Windows blocks its input. Do not test secure-desktop screens.
+
+2. Require signature status `Valid`. Install for the current user and launch VoxKey.
+3. Confirm settings opens automatically and reports speech/runtime/model setup progress instead of appearing frozen.
+4. Interrupt the network during the writer-runtime download, restart VoxKey, and confirm the download resumes.
+5. Confirm setup reaches `Ready` without installing a separate Ollama application.
+6. Confirm VoxKey owns these paths:
+
+   ```text
+   %LOCALAPPDATA%\VoxKey\runtime\ollama\ollama.exe
+   %LOCALAPPDATA%\VoxKey\models\speech
+   %LOCALAPPDATA%\VoxKey\models\writer
+   ```
+
+7. Confirm the managed writer listens only on `127.0.0.1:11435`.
+
+## Dictation
+
+1. In Notepad, hold Right Ctrl, speak, and release. Confirm the orb appears only while held and polished text is pasted once.
+2. Repeat with the F8 and F9 hotkey choices. Confirm the previous hotkey stops triggering immediately.
+3. Select another microphone and confirm it takes effect without restarting.
+4. Test short taps, long dictations, empty audio, writer failure, and twenty consecutive dictations. Confirm there is no raw-transcript fallback, stuck orb, duplicate paste, or microphone leak.
+5. Verify start/completion sounds, then disable sounds and confirm the setting persists after restart.
+
+## Windows integration
+
+1. Enable **Start VoxKey with Windows**, sign out and back in, and confirm exactly one VoxKey process starts.
+2. Disable it and confirm the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\VoxKey` value is removed.
+3. Test Notepad, a browser text box, Microsoft Office, and one Electron application.
+4. Test an elevated target separately and document Windows integrity-level limitations.
+
+## Diagnostics and repair
+
+1. Corrupt a copied test speech model and confirm **Repair models** replaces it.
+2. Confirm `%LOCALAPPDATA%\VoxKey\voxkey.log` contains setup, device, transcription, polishing, paste, and failure details.
+3. Quit from the tray and confirm VoxKey and its managed Ollama child process exit.
+
+## Uninstall
+
+1. Run the VoxKey uninstaller.
+2. Confirm the application directory, `%LOCALAPPDATA%\VoxKey`, shortcuts, autostart registry value, VoxKey process, and managed Ollama process are gone.
+3. Reinstall once more to confirm a true clean setup succeeds.
+
+Record Windows version, CPU, GPU, RAM, microphone, setup duration, and every failure before approving a release tag.

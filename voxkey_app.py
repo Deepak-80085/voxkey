@@ -5,9 +5,11 @@ from __future__ import annotations
 import ctypes
 import os
 import queue
+import sys
 import threading
 import time
 import uuid
+import winreg
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +18,7 @@ import sounddevice as sd
 from pynput import keyboard
 from scipy.io.wavfile import write
 
+from ollama_runtime import ManagedOllamaRuntime
 from speech_models import SpeechModelManager
 from voxkey_events import EventBus, UiEvent
 from voxkey_ui import VoxKeyShell, create_qt_application
@@ -25,14 +28,33 @@ from writing_model import WritingModelClient
 
 SAMPLE_RATE = 16_000
 HOLD_TRIGGER_S = 0.28
-# Right Ctrl is deliberately chosen: Alt activates Windows access-key menus in target apps.
-DICTATION_KEYS = (keyboard.Key.ctrl_r,)
+HOTKEY_KEYS = {
+    "right_ctrl": keyboard.Key.ctrl_r,
+    "f8": keyboard.Key.f8,
+    "f9": keyboard.Key.f9,
+}
+HOTKEY_CHOICES = (("right_ctrl", "Right Ctrl"), ("f8", "F8"), ("f9", "F9"))
 IS_WINDOWS = os.name == "nt"
 _user32 = ctypes.windll.user32 if IS_WINDOWS else None
 _kernel32 = ctypes.windll.kernel32 if IS_WINDOWS else None
 SW_RESTORE = 9
 _INSTANCE_MUTEX_NAME = "Local\\VoxKeySingleInstance"
 _instance_mutex_handle = None
+
+
+def set_start_with_windows(enabled: bool, executable: Path | None = None) -> None:
+    path = str(executable or Path(sys.executable))
+    with winreg.CreateKey(
+        winreg.HKEY_CURRENT_USER,
+        r"Software\Microsoft\Windows\CurrentVersion\Run",
+    ) as key:
+        if enabled:
+            winreg.SetValueEx(key, "VoxKey", 0, winreg.REG_SZ, f'"{path}"')
+        else:
+            try:
+                winreg.DeleteValue(key, "VoxKey")
+            except FileNotFoundError:
+                pass
 
 
 def claim_single_instance() -> bool:
@@ -183,7 +205,7 @@ class Recorder:
 
 
 class HoldToDictateService:
-    """Single Right Ctrl hold hotkey; records only when VoxKey is Ready."""
+    """Single hold hotkey; records only when VoxKey is Ready."""
 
     def __init__(self, controller: VoxKeyController, runtime: VoxKeyRuntime, logger=None, events=None):
         self.controller = controller
@@ -192,6 +214,9 @@ class HoldToDictateService:
         self.events = events
         settings = runtime.load_settings()
         device = settings.get("microphone") if isinstance(settings, dict) else None
+        hotkey = settings.get("hotkey", "right_ctrl") if isinstance(settings, dict) else "right_ctrl"
+        self.hotkey_name = hotkey if hotkey in HOTKEY_KEYS else "right_ctrl"
+        self.trigger_key = HOTKEY_KEYS[self.hotkey_name]
         self.recorder = Recorder(runtime.recordings_dir(), device=device)
         self.hotkey_down = False
         self.recording = False
@@ -223,13 +248,13 @@ class HoldToDictateService:
             self.worker.join(timeout=5)
 
     def _press(self, key) -> None:
-        if key in DICTATION_KEYS:
+        if key == self.trigger_key:
             if not self.hotkey_down:
                 self.hotkey_down = True
                 self.hotkey_started_at = time.monotonic()
                 self.ignore_cycle = False
                 self.paste_target_hwnd = get_foreground_window_handle()
-                self.logger.info("Right Ctrl pressed; paste target=%s", self.paste_target_hwnd)
+                self.logger.info("Dictation hotkey pressed; paste target=%s", self.paste_target_hwnd)
                 if self.controller.can_dictate():
                     try:
                         self.recording = self.recorder.start()
@@ -242,7 +267,7 @@ class HoldToDictateService:
             self.ignore_cycle = True
 
     def _release(self, key) -> None:
-        if key not in DICTATION_KEYS:
+        if key != self.trigger_key:
             return
         self.hotkey_down = False
         self.hotkey_started_at = None
@@ -268,6 +293,15 @@ class HoldToDictateService:
 
     def set_microphone(self, device) -> None:
         self.recorder.device = device
+
+    def set_hotkey(self, name: str) -> None:
+        if name not in HOTKEY_KEYS:
+            return
+        self.recorder.abort()
+        self.hotkey_down = self.recording = self.capture_started = False
+        self.hotkey_started_at = self.paste_target_hwnd = None
+        self.hotkey_name = name
+        self.trigger_key = HOTKEY_KEYS[name]
 
     def tick(self) -> None:
         if (
@@ -319,10 +353,17 @@ def main() -> None:
     runtime = VoxKeyRuntime()
     runtime.install_exception_logging()
     settings = runtime.load_settings()
+    set_start_with_windows(bool(settings.get("start_with_windows")))
     speech = SpeechModelManager(
         runtime, vocabulary_provider=lambda: runtime.load_settings()["vocabulary"]
     )
-    writer = WritingModelClient(settings["ollama_model"])
+    ollama = ManagedOllamaRuntime(runtime)
+    first_run = not ollama.is_installed()
+    writer = WritingModelClient(
+        settings["ollama_model"],
+        base_url=ollama.base_url,
+        runtime_manager=ollama,
+    )
     logger = runtime.logger()
     logger.info("VoxKey starting")
     events = EventBus()
@@ -340,6 +381,7 @@ def main() -> None:
         stopped = True
         logger.info("VoxKey shutting down")
         service.stop()
+        ollama.stop()
         shell.close()
         app.quit()
 
@@ -349,7 +391,12 @@ def main() -> None:
         shutdown,
         microphones=available_input_devices(),
         set_microphone=service.set_microphone,
+        hotkeys=HOTKEY_CHOICES,
+        set_hotkey=service.set_hotkey,
+        set_autostart=set_start_with_windows,
     )
+    if first_run:
+        shell.show_settings()
     service.start()
 
     from PySide6.QtCore import QTimer

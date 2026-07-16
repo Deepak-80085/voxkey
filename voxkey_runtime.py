@@ -46,6 +46,11 @@ class VoxKeyRuntime:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def runtime_dir(self) -> Path:
+        path = self.data_dir() / "runtime"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     def recordings_dir(self) -> Path:
         path = self.data_dir() / "recordings"
         path.mkdir(parents=True, exist_ok=True)

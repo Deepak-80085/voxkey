@@ -38,6 +38,32 @@ class SettingsActionsTests(unittest.TestCase):
         self.assertEqual(runtime.save_settings.call_args.args[0]["microphone"], 3)
         update_recorder.assert_called_once_with(3)
 
+    def test_hotkey_selection_persists_and_updates_live_listener(self):
+        from voxkey_ui import SettingsActions
+
+        runtime = Mock()
+        runtime.load_settings.return_value = {'hotkey': 'right_ctrl'}
+        update_hotkey = Mock()
+        actions = SettingsActions(Mock(), runtime, set_hotkey=update_hotkey)
+
+        actions.set_hotkey('f8')
+
+        self.assertEqual(runtime.save_settings.call_args.args[0]['hotkey'], 'f8')
+        update_hotkey.assert_called_once_with('f8')
+
+    def test_autostart_selection_persists_and_updates_windows(self):
+        from voxkey_ui import SettingsActions
+
+        runtime = Mock()
+        runtime.load_settings.return_value = {'start_with_windows': False}
+        update_autostart = Mock()
+        actions = SettingsActions(Mock(), runtime, set_autostart=update_autostart)
+
+        actions.set_autostart(True)
+
+        self.assertTrue(runtime.save_settings.call_args.args[0]['start_with_windows'])
+        update_autostart.assert_called_once_with(True)
+
 
 if __name__ == "__main__":
     unittest.main()

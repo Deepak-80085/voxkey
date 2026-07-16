@@ -4,16 +4,16 @@
   <img src="asset/logo.png" alt="VoxKey logo" width="180">
 </p>
 
-**Private, local voice typing for Windows.** Hold **Right Ctrl**, speak naturally, release, and VoxKey pastes polished English text back into the app you were using.
+**Private, local voice typing for Windows.** Hold your selected hotkey, speak naturally, release, and VoxKey pastes polished English text back into the app you were using.
 
 VoxKey stays out of sight while idle. A small animated orb appears only while
-Right Ctrl is held; it disappears immediately on release while transcription,
+the hotkey is held; it disappears immediately on release while transcription,
 polishing, and paste continue locally in the background.
 
 ## Local-first by design
 
 - English-only speech recognition using local `small.en` (never `base.en`).
-- Local writing polish through Ollama model `qwen3.5:0.8b`.
+- Local writing polish through a VoxKey-managed Ollama runtime and `qwen3.5:0.8b`.
 - No account, subscription, API key, cloud transcription, or raw-text fallback.
 - Speech/writer failure means no paste—not an unpolished transcript.
 
@@ -21,32 +21,26 @@ polishing, and paste continue locally in the background.
 
 - Windows 10/11 x64
 - NVIDIA GPU is optional; VoxKey uses it when the local runtime is available and otherwise uses the same `small.en` model on CPU.
-- [Ollama](https://ollama.com/) running locally with:
-
-```powershell
-ollama pull qwen3.5:0.8b
-```
+- Internet access and several gigabytes of free disk space are required during first-run setup. Dictation works offline after setup.
 
 ## Install and use
 
-1. Download `VoxKey-Setup-2.2.2.exe` from Releases.
+1. Download the latest `VoxKey-Setup-*.exe` from Releases.
 2. Install for the current Windows user.
-3. Start VoxKey. It lives in the system tray when ready.
-4. Click into any ordinary app, hold **Right Ctrl** for a moment, speak, then release it.
+3. Start VoxKey and keep it open while it downloads and verifies its private speech and writing runtimes.
+4. Wait for `Ready`, click into any ordinary app, hold **Right Ctrl**, **F8**, or **F9**, speak, then release it.
 
 The tray menu opens settings, selects the microphone, toggles sounds, repairs
-models, opens diagnostics, and quits VoxKey. **Repair models** downloads the
-required writer model automatically when Ollama is installed.
+models, changes the hold hotkey, enables Windows autostart, opens diagnostics,
+and quits VoxKey. No separate Ollama installation or command is required.
 
-> **Unsigned pre-release:** Until the project is code-signed, Windows SmartScreen may show a warning. Verify the release SHA-256 checksum before installing.
+> Existing beta releases may be unsigned. New tagged releases are blocked unless the application and installer are Authenticode-signed. Always verify the release checksum.
 
 ## Limitations
 
 - Windows secure-desktop screens (lock screen, UAC prompts, Ctrl+Alt+Del) cannot accept dictation.
 - Windows may block input into an elevated application when VoxKey is not elevated. Run VoxKey as administrator only when you specifically need to dictate into an administrator-run app.
-- Right Ctrl is currently the fixed dictation trigger. Configurable hotkeys,
-  vocabulary editing, autostart, and a bundled writer runtime are not
-  implemented yet.
+- Vocabulary editing does not yet have a settings interface.
 
 ## Diagnostics and privacy
 

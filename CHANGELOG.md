@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Changed
+- Manage a pinned portable Ollama runtime and `qwen3.5:0.8b` under the VoxKey data directory with no external install or command.
+- Add resumable runtime download, SHA-256 verification, private port `11435`, streamed setup progress, and automatic first-run repair.
+- Add live Right Ctrl, F8, and F9 hotkey selection plus per-user Windows autostart.
+- Block tagged releases when Authenticode certificate secrets are missing.
+- Remove VoxKey-owned runtime, models, settings, logs, recordings, and autostart state during uninstall.
 - Begin microphone capture immediately on Right Ctrl press and discard short taps.
 - Add live microphone selection with a system-default fallback.
 - Keep `small.en` after local comparison with Distil Large v3 on the target GTX 1650.

@@ -56,6 +56,18 @@ class VoxKeyHotkeyTests(unittest.TestCase):
 
         self.assertFalse(service.recording)
 
+    def test_selected_f8_hotkey_replaces_right_ctrl_live(self):
+        service = self.make_service()
+        service.recorder = Mock()
+        service.recorder.start.return_value = True
+
+        service.set_hotkey('f8')
+        service._press(keyboard.Key.ctrl_r)
+        service._press(keyboard.Key.f8)
+
+        service.recorder.start.assert_called_once_with()
+        self.assertEqual(service.hotkey_name, 'f8')
+
     def test_valid_hold_emits_capture_started_event(self):
         runtime = Mock(spec=VoxKeyRuntime)
         runtime.recordings_dir.return_value = Path(".")

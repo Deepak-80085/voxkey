@@ -104,6 +104,21 @@ class VoxKeyRuntimeTests(unittest.TestCase):
         self.assertIn("Unhandled exception in main thread", contents)
         self.assertIn("RuntimeError: worker exploded", contents)
 
+    def test_windows_autostart_writes_current_executable_to_run_key(self):
+        from unittest.mock import Mock, patch
+        from voxkey_app import set_start_with_windows
+
+        key = Mock()
+        key.__enter__ = Mock(return_value=key)
+        key.__exit__ = Mock(return_value=None)
+        with patch('voxkey_app.winreg.CreateKey', return_value=key), patch(
+            'voxkey_app.winreg.SetValueEx'
+        ) as set_value:
+            set_start_with_windows(True, executable=Path('C:/VoxKey/VoxKey.exe'))
+
+        self.assertEqual(set_value.call_args.args[1], 'VoxKey')
+        self.assertIn('VoxKey.exe', set_value.call_args.args[4])
+
 
 if __name__ == "__main__":
     unittest.main()

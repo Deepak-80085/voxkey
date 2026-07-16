@@ -82,15 +82,29 @@ class DictationPipelineTests(unittest.TestCase):
         speech.repair.assert_not_called()
         self.assertEqual(speech.health_check.call_count, 1)
 
-    def test_repair_uses_writer_repair_after_speech_is_ready(self):
+    def test_repair_prepares_writer_before_speech(self):
         speech, writer = Mock(), Mock()
         speech.repair.return_value = Mock(ready=True, reason=None)
         writer.repair.return_value = Mock(ready=True, reason=None)
         controller = VoxKeyController(speech, writer, paste=Mock())
+        order = []
+        writer.repair.side_effect = lambda _progress: order.append('writer') or Mock(ready=True, reason=None)
+        speech.repair.side_effect = lambda: order.append('speech') or Mock(ready=True, reason=None)
 
         controller.repair_models()
 
-        writer.repair.assert_called_once_with()
+        self.assertEqual(order, ['writer', 'speech'])
+        self.assertEqual(controller.state, AppState.READY)
+
+    def test_start_automatically_prepares_writer_runtime(self):
+        speech, writer = Mock(), Mock()
+        speech.health_check.return_value = Mock(ready=True, reason=None)
+        writer.repair.return_value = Mock(ready=True, reason=None)
+        controller = VoxKeyController(speech, writer, paste=Mock())
+
+        controller.start()
+
+        writer.repair.assert_called_once()
         self.assertEqual(controller.state, AppState.READY)
 
 

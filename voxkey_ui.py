@@ -166,11 +166,21 @@ class VoxKeyHud(QWidget):
 class SettingsActions:
     """Small testable adapter between settings controls and local runtime."""
 
-    def __init__(self, controller, runtime, sound_player=None, set_microphone=None) -> None:
+    def __init__(
+        self,
+        controller,
+        runtime,
+        sound_player=None,
+        set_microphone=None,
+        set_hotkey=None,
+        set_autostart=None,
+    ) -> None:
         self.controller = controller
         self.runtime = runtime
         self.sound_player = sound_player
         self._set_microphone = set_microphone
+        self._set_hotkey = set_hotkey
+        self._set_autostart = set_autostart
 
     def set_sounds_enabled(self, enabled: bool) -> None:
         settings = dict(self.runtime.load_settings())
@@ -189,6 +199,20 @@ class SettingsActions:
         if self._set_microphone:
             self._set_microphone(device)
 
+    def set_hotkey(self, name: str) -> None:
+        settings = dict(self.runtime.load_settings())
+        settings["hotkey"] = name
+        self.runtime.save_settings(settings)
+        if self._set_hotkey:
+            self._set_hotkey(name)
+
+    def set_autostart(self, enabled: bool) -> None:
+        settings = dict(self.runtime.load_settings())
+        settings["start_with_windows"] = bool(enabled)
+        self.runtime.save_settings(settings)
+        if self._set_autostart:
+            self._set_autostart(bool(enabled))
+
     def open_diagnostics(self) -> None:
         import os
         os.startfile(self.runtime.data_dir())
@@ -204,12 +228,23 @@ class VoxKeyShell:
         shutdown,
         microphones=(),
         set_microphone=None,
+        hotkeys=(),
+        set_hotkey=None,
+        set_autostart=None,
     ) -> None:
         self.controller, self.runtime, self.shutdown = controller, runtime, shutdown
         self.microphones = microphones
+        self.hotkeys = hotkeys
         self.hud = VoxKeyHud()
         self.sounds = SoundPlayer(runtime.load_settings()["sounds_enabled"], runtime.logger())
-        self.actions = SettingsActions(controller, runtime, self.sounds, set_microphone)
+        self.actions = SettingsActions(
+            controller,
+            runtime,
+            self.sounds,
+            set_microphone,
+            set_hotkey,
+            set_autostart,
+        )
         self.tray = QSystemTrayIcon(
             QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         )
@@ -235,7 +270,7 @@ class VoxKeyShell:
         title = QLabel("VoxKey")
         title.setFont(QFont("Segoe UI", 18, QFont.DemiBold))
         layout.addWidget(title)
-        layout.addWidget(QLabel("Private local dictation. Hold Right Ctrl to speak."))
+        layout.addWidget(QLabel("Private local dictation. Hold your selected hotkey to speak."))
         self.health = QLabel()
         layout.addWidget(self.health)
         microphone = QComboBox()
@@ -249,11 +284,24 @@ class VoxKeyShell:
             lambda _index: self.actions.set_microphone(microphone.currentData())
         )
         layout.addWidget(microphone)
+        hotkey = QComboBox()
+        for name, label in self.hotkeys:
+            hotkey.addItem(label, name)
+        selected_hotkey = self.runtime.load_settings().get("hotkey", "right_ctrl")
+        hotkey.setCurrentIndex(max(0, hotkey.findData(selected_hotkey)))
+        hotkey.currentIndexChanged.connect(
+            lambda _index: self.actions.set_hotkey(hotkey.currentData())
+        )
+        layout.addWidget(hotkey)
         checkbox = QCheckBox("Play voice feedback sounds")
         checkbox.setChecked(self.sounds.enabled)
         checkbox.toggled.connect(self.actions.set_sounds_enabled)
         checkbox.toggled.connect(self.sound_action.setChecked)
         layout.addWidget(checkbox)
+        autostart = QCheckBox("Start VoxKey with Windows")
+        autostart.setChecked(bool(self.runtime.load_settings().get("start_with_windows")))
+        autostart.toggled.connect(self.actions.set_autostart)
+        layout.addWidget(autostart)
         repair = QPushButton("Repair models")
         repair.clicked.connect(self.actions.repair)
         layout.addWidget(repair)

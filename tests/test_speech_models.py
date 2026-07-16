@@ -28,6 +28,7 @@ class SpeechModelTests(unittest.TestCase):
             (base / "mlx_cuda_v13").mkdir(parents=True)
             runtime = Mock()
             runtime.models_dir.return_value = Path(temp_dir) / "models"
+            runtime.runtime_dir.return_value = Path(temp_dir) / "voxkey-runtime"
             runtime.logger.return_value = Mock()
             handles = []
 
@@ -36,6 +37,21 @@ class SpeechModelTests(unittest.TestCase):
                 manager._configure_cuda_runtime_search_path()
 
         self.assertEqual(handles, [str(base / "cuda_v12"), str(base / "mlx_cuda_v13")])
+
+    def test_managed_ollama_cuda_runtime_is_used_without_system_ollama(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / 'runtime' / 'ollama' / 'lib' / 'ollama'
+            (base / 'cuda_v12').mkdir(parents=True)
+            runtime = Mock()
+            runtime.runtime_dir.return_value = Path(temp_dir) / 'runtime'
+            runtime.models_dir.return_value = Path(temp_dir) / 'models'
+            runtime.logger.return_value = Mock()
+            handles = []
+            manager = SpeechModelManager(runtime, dll_directory_adder=handles.append)
+
+            manager._configure_cuda_runtime_search_path()
+
+        self.assertIn(str(base / 'cuda_v12'), handles)
 
     def test_transcription_logs_the_active_inference_device(self):
         model, logger = Mock(), Mock()

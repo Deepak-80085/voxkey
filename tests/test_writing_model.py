@@ -1,19 +1,22 @@
-import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from writing_model import WritingModelClient, WritingModelUnavailable
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, lines=()):
         self.payload = payload
+        self.lines = lines
 
     def raise_for_status(self):
         return None
 
     def json(self):
         return self.payload
+
+    def iter_lines(self):
+        return iter(self.lines)
 
 
 class WritingModelTests(unittest.TestCase):
@@ -53,51 +56,82 @@ class WritingModelTests(unittest.TestCase):
         with self.assertRaises(WritingModelUnavailable):
             client.polish("hello")
 
-    def test_repair_pulls_missing_model_with_local_ollama_cli(self):
+    def test_repair_starts_managed_runtime_and_pulls_missing_model(self):
         request = Mock(
             side_effect=[
+                FakeResponse({"models": []}),
                 FakeResponse({"models": []}),
                 FakeResponse({"models": [{"name": "test-model"}]}),
             ]
         )
-        run = Mock()
+        post = Mock(
+            return_value=FakeResponse(
+                {"status": "success"},
+                [b'{"status":"downloading","completed":5,"total":10}', b'{"status":"success"}'],
+            )
+        )
+        runtime_manager = Mock()
         client = WritingModelClient(
             "test-model",
             request=request,
-            run=run,
-            which=Mock(return_value="ollama.exe"),
+            post=post,
+            runtime_manager=runtime_manager,
+        )
+
+        progress = []
+        status = client.repair(progress.append)
+
+        self.assertTrue(status.ready)
+        runtime_manager.ensure_ready.assert_called_once()
+        self.assertTrue(post.call_args.args[0].endswith('/api/pull'))
+        self.assertEqual(post.call_args.kwargs['json'], {'model': 'test-model', 'stream': True})
+        self.assertTrue(any('50%' in detail for detail in progress))
+
+    def test_repair_does_not_pull_when_model_is_already_available(self):
+        runtime_manager = Mock()
+        client = WritingModelClient(
+            "test-model",
+            request=Mock(return_value=FakeResponse({"models": [{"name": "test-model"}]})),
+            runtime_manager=runtime_manager,
+        )
+
+        self.assertTrue(client.repair().ready)
+        runtime_manager.ensure_ready.assert_not_called()
+
+    def test_repair_rechecks_model_after_starting_managed_runtime(self):
+        request = Mock(
+            side_effect=[
+                ConnectionError('runtime stopped'),
+                FakeResponse({'models': [{'name': 'test-model'}]}),
+            ]
+        )
+        post = Mock()
+        runtime_manager = Mock()
+        client = WritingModelClient(
+            'test-model',
+            request=request,
+            post=post,
+            runtime_manager=runtime_manager,
+        )
+
+        self.assertTrue(client.repair().ready)
+
+        runtime_manager.ensure_ready.assert_called_once()
+        post.assert_not_called()
+
+    def test_repair_explains_when_managed_runtime_install_fails(self):
+        runtime_manager = Mock()
+        runtime_manager.ensure_ready.side_effect = RuntimeError('download failed')
+        client = WritingModelClient(
+            "test-model",
+            request=Mock(return_value=FakeResponse({"models": []})),
+            runtime_manager=runtime_manager,
         )
 
         status = client.repair()
 
-        self.assertTrue(status.ready)
-        self.assertEqual(run.call_args.args[0], ["ollama.exe", "pull", "test-model"])
-
-    def test_repair_does_not_pull_when_model_is_already_available(self):
-        run = Mock()
-        client = WritingModelClient(
-            "test-model",
-            request=Mock(return_value=FakeResponse({"models": [{"name": "test-model"}]})),
-            run=run,
-            which=Mock(return_value="ollama.exe"),
-        )
-
-        self.assertTrue(client.repair().ready)
-        run.assert_not_called()
-
-    def test_repair_explains_when_ollama_is_not_installed(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.dict("os.environ", {"LOCALAPPDATA": temp_dir}, clear=False):
-                client = WritingModelClient(
-                    "test-model",
-                    request=Mock(return_value=FakeResponse({"models": []})),
-                    which=Mock(return_value=None),
-                )
-
-                status = client.repair()
-
         self.assertFalse(status.ready)
-        self.assertIn("Install Ollama", status.reason)
+        self.assertIn("runtime", status.reason.lower())
 
 
 if __name__ == "__main__":

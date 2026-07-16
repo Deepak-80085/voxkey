@@ -52,7 +52,7 @@ class VoxKeyController:
         self.on_state(state, reason)
 
     def start(self) -> None:
-        self._validate(self.speech.health_check, self.writer.health_check)
+        self._validate(self.speech.health_check, self.writer.repair)
 
     def repair_models(self) -> None:
         self._validate(self.speech.repair, self.writer.repair)
@@ -61,14 +61,15 @@ class VoxKeyController:
         if not self._validation_lock.acquire(blocking=False):
             return
         try:
-            self._set_state(AppState.VALIDATING)
+            self._set_state(AppState.SETUP, "Preparing local writing model...")
+            writer_status = writer_check(lambda detail: self._set_state(AppState.SETUP, detail))
+            if not writer_status.ready:
+                self._set_state(AppState.NEEDS_REPAIR, writer_status.reason)
+                return
+            self._set_state(AppState.SETUP, "Preparing local speech model...")
             speech_status = speech_check()
             if not speech_status.ready:
                 self._set_state(AppState.NEEDS_REPAIR, speech_status.reason)
-                return
-            writer_status = writer_check()
-            if not writer_status.ready:
-                self._set_state(AppState.NEEDS_REPAIR, writer_status.reason)
                 return
             self._set_state(AppState.READY)
         finally:

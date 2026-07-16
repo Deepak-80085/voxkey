@@ -15,7 +15,7 @@ if (-not $signTool) {
 }
 
 foreach ($file in $Files) {
-    & $signTool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+    & $signTool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com `
         /f $CertificatePath /p $CertificatePassword $file
     if ($LASTEXITCODE -ne 0) {
         throw "Signing failed: $file"
