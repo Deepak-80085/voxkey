@@ -31,7 +31,7 @@ polishing, and paste continue locally in the background.
 4. Wait for `Ready`, click into any ordinary app, hold **Right Ctrl**, **F8**, or **F9**, speak, then release it.
 
 The tray menu opens settings, selects the microphone, toggles sounds, repairs
-models, changes the hold hotkey, enables Windows autostart, opens diagnostics,
+models, changes the hold hotkey, edits custom vocabulary, enables Windows autostart, opens diagnostics,
 and quits VoxKey. No separate Ollama installation or command is required.
 
 > Existing beta releases may be unsigned. New tagged releases are blocked unless the application and installer are Authenticode-signed. Always verify the release checksum.

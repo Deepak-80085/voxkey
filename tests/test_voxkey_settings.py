@@ -51,6 +51,19 @@ class SettingsActionsTests(unittest.TestCase):
         self.assertEqual(runtime.save_settings.call_args.args[0]['hotkey'], 'f8')
         update_hotkey.assert_called_once_with('f8')
 
+    def test_vocabulary_text_is_normalized_and_persisted(self):
+        from voxkey_ui import SettingsActions
+
+        runtime = Mock()
+        runtime.load_settings.return_value = {"vocabulary": []}
+        actions = SettingsActions(Mock(), runtime)
+
+        actions.set_vocabulary(" VoxKey\nGitHub   Actions\nvoxkey\n")
+
+        self.assertEqual(
+            runtime.save_settings.call_args.args[0]["vocabulary"],
+            ["VoxKey", "GitHub Actions"],
+        )
     def test_autostart_selection_persists_and_updates_windows(self):
         from voxkey_ui import SettingsActions
 

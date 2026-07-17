@@ -11,12 +11,14 @@ from pathlib import Path
 from PySide6.QtCore import QEasingCurve, QPoint, Property, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QLabel, QMenu, QPushButton, QSystemTrayIcon,
+    QApplication, QCheckBox, QComboBox, QDialog, QLabel, QMenu, QPlainTextEdit,
+    QPushButton, QSystemTrayIcon,
     QVBoxLayout, QWidget,
 )
 
 from voxkey_events import UiEvent
 from voxkey_runtime import AppState
+from vocabulary import normalize_vocabulary
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,11 @@ class SettingsActions:
         if self._set_autostart:
             self._set_autostart(bool(enabled))
 
+    def set_vocabulary(self, text: str) -> None:
+        settings = dict(self.runtime.load_settings())
+        settings["vocabulary"] = normalize_vocabulary(text.splitlines())
+        self.runtime.save_settings(settings)
+
     def open_diagnostics(self) -> None:
         import os
         os.startfile(self.runtime.data_dir())
@@ -293,6 +300,16 @@ class VoxKeyShell:
             lambda _index: self.actions.set_hotkey(hotkey.currentData())
         )
         layout.addWidget(hotkey)
+        vocabulary = QPlainTextEdit()
+        vocabulary.setPlaceholderText("Names and terms, one per line")
+        vocabulary.setPlainText("\n".join(self.runtime.load_settings().get("vocabulary", [])))
+        vocabulary.setFixedHeight(72)
+        layout.addWidget(vocabulary)
+        save_vocabulary = QPushButton("Save vocabulary")
+        save_vocabulary.clicked.connect(
+            lambda: self.actions.set_vocabulary(vocabulary.toPlainText())
+        )
+        layout.addWidget(save_vocabulary)
         checkbox = QCheckBox("Play voice feedback sounds")
         checkbox.setChecked(self.sounds.enabled)
         checkbox.toggled.connect(self.actions.set_sounds_enabled)
@@ -308,7 +325,7 @@ class VoxKeyShell:
         diagnostics = QPushButton("Open diagnostics folder")
         diagnostics.clicked.connect(self.actions.open_diagnostics)
         layout.addWidget(diagnostics)
-        dialog.resize(400, 220)
+        dialog.resize(400, 340)
         return dialog
 
     def show_settings(self) -> None:
