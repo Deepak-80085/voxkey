@@ -34,8 +34,6 @@ The tray menu opens settings, selects the microphone, toggles sounds, repairs
 models, changes the hold hotkey, enables Windows autostart, opens diagnostics,
 and quits VoxKey. No separate Ollama installation or command is required.
 
-VoxKey release builds will use SignPath Foundation for free open-source code signing.
-
 > Existing beta releases may be unsigned. New tagged releases are blocked unless the application and installer are Authenticode-signed. Always verify the release checksum.
 
 ## Limitations
