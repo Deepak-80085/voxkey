@@ -52,6 +52,35 @@ jobs:
       - name: Build installer
         run: |
           iscc installer/VoxKey.iss
+      - name: Smoke-test installer
+        run: |
+          $installer = (Resolve-Path release\VoxKey-Setup-2.3.0.exe).Path
+          $install = Start-Process $installer `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' `
+            -Wait -PassThru
+          if ($install.ExitCode -ne 0) {
+            throw "Installer failed with exit code $($install.ExitCode)."
+          }
+
+          $installDir = Join-Path $env:LOCALAPPDATA 'Programs\VoxKey'
+          $exe = Join-Path $installDir 'VoxKey.exe'
+          if (-not (Test-Path $exe)) {
+            throw "Installer did not create $exe."
+          }
+          if ((Get-Item $exe).VersionInfo.ProductVersion -ne '2.3.0') {
+            throw "Installed VoxKey version is not 2.3.0."
+          }
+
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          $uninstall = Start-Process $uninstaller `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' `
+            -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            throw "Uninstaller failed with exit code $($uninstall.ExitCode)."
+          }
+          if (Test-Path $exe) {
+            throw "Uninstaller left the VoxKey executable installed."
+          }
       - name: Sign installer
         if: env.WINDOWS_CERTIFICATE != ''
         run: |

@@ -79,6 +79,15 @@ class VoxKeyPackagingTests(unittest.TestCase):
         self.assertTrue((ROOT / "docs" / "windows-signing.md").is_file())
         self.assertNotIn("VoxKey-Setup-2.1.0.exe", workflow)
 
+    def test_release_workflow_smoke_tests_install_and_uninstall(self):
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("Smoke-test installer", workflow)
+        self.assertIn("/VERYSILENT", workflow)
+        self.assertIn("unins000.exe", workflow)
+        self.assertIn("ProductVersion", workflow)
     def test_frozen_validation_reports_missing_vad_model(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             missing = validate_frozen_app(Path(temporary_directory))
