@@ -63,7 +63,7 @@ class VoxKeyRuntime:
             "microphone": None,
             "ollama_model": "qwen3.5:0.8b",
             "vocabulary": [],
-            "start_with_windows": True,
+            "start_with_windows": False,
             "sounds_enabled": True,
         }
 
