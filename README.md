@@ -34,7 +34,7 @@ The tray menu opens settings, selects the microphone, toggles sounds, repairs
 models, changes the hold hotkey, edits custom vocabulary, enables Windows autostart, opens diagnostics,
 and quits VoxKey. No separate Ollama installation or command is required.
 
-> Existing beta releases may be unsigned. New tagged releases are blocked unless the application and installer are Authenticode-signed. Always verify the release checksum.
+> Releases may be unsigned until a trusted signing configuration is available. Unsigned Windows builds can be blocked by Smart App Control or SmartScreen; always verify the release checksum and read the release security notice.
 
 ## Limitations
 

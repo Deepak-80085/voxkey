@@ -72,8 +72,11 @@ class VoxKeyPackagingTests(unittest.TestCase):
 
         self.assertIn("VoxKey-Setup-2.3.0.exe", workflow)
         self.assertIn("WINDOWS_CERTIFICATE", workflow)
-        self.assertIn("Require signing certificate for tagged releases", workflow)
-        self.assertIn("env.WINDOWS_CERTIFICATE == ''", workflow)
+        self.assertIn("Report release signing status", workflow)
+        self.assertIn("published unsigned", workflow)
+        self.assertIn("body_path: release/release-notes.md", workflow)
+        self.assertIn("Smart App Control", workflow)
+        self.assertNotIn("Require signing certificate for tagged releases", workflow)
         self.assertIn("signtool.exe", signing_script.lower())
         self.assertIn("verify /pa", signing_script.lower())
         self.assertTrue((ROOT / "docs" / "windows-signing.md").is_file())

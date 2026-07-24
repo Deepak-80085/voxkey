@@ -32,18 +32,24 @@ jobs:
         run: |
           pyinstaller --clean --noconfirm VoxKey.spec
           python tests/test_voxkey_packaging.py dist/VoxKey
-      - name: Require signing certificate for tagged releases
-        if: startsWith(github.ref, 'refs/tags/') && (env.WINDOWS_CERTIFICATE == '' || env.WINDOWS_CERTIFICATE_PASSWORD == '')
-        run: throw "Tagged VoxKey releases require WINDOWS_CERTIFICATE and WINDOWS_CERTIFICATE_PASSWORD."
+      - name: Report release signing status
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_CERTIFICATE -ne '' -and $env:WINDOWS_CERTIFICATE_PASSWORD -ne '') {
+            Write-Output 'Tagged release will be Authenticode-signed.'
+          } else {
+            Write-Warning 'Tagged release will be published unsigned because signing secrets are unavailable.'
+          }
       - name: Decode signing certificate
-        if: env.WINDOWS_CERTIFICATE != ''
+        if: env.WINDOWS_CERTIFICATE != '' && env.WINDOWS_CERTIFICATE_PASSWORD != ''
         run: |
           [IO.File]::WriteAllBytes(
             "$env:RUNNER_TEMP\voxkey.pfx",
             [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
           )
       - name: Sign application
-        if: env.WINDOWS_CERTIFICATE != ''
+        if: env.WINDOWS_CERTIFICATE != '' && env.WINDOWS_CERTIFICATE_PASSWORD != ''
         run: |
           .\scripts\sign_windows.ps1 `
             -Files dist\VoxKey\VoxKey.exe `
@@ -82,7 +88,7 @@ jobs:
             throw "Uninstaller left the VoxKey executable installed."
           }
       - name: Sign installer
-        if: env.WINDOWS_CERTIFICATE != ''
+        if: env.WINDOWS_CERTIFICATE != '' && env.WINDOWS_CERTIFICATE_PASSWORD != ''
         run: |
           .\scripts\sign_windows.ps1 `
             -Files release\VoxKey-Setup-2.3.0.exe `
@@ -92,6 +98,28 @@ jobs:
         run: |
           $hash = (Get-FileHash release/VoxKey-Setup-2.3.0.exe -Algorithm SHA256).Hash
           "$hash  VoxKey-Setup-2.3.0.exe" | Set-Content release/VoxKey-Setup-2.3.0.exe.sha256
+      - name: Prepare release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $signed = $env:WINDOWS_CERTIFICATE -ne '' -and $env:WINDOWS_CERTIFICATE_PASSWORD -ne ''
+          if ($signed) {
+            @'
+          ## Windows release
+
+          VoxKey.exe and the installer were Authenticode-signed and timestamped.
+
+          Verify the published SHA-256 checksum before installing.
+          '@ | Set-Content release/release-notes.md -Encoding utf8
+          } else {
+            @'
+          ## Unsigned Windows release
+
+          This release was built from the public VoxKey source but is not Authenticode-signed. Windows Smart App Control, SmartScreen, or enterprise policy may warn about or block the executable.
+
+          Verify the published SHA-256 checksum before installing. Do not disable Windows security protections solely to run this build.
+          '@ | Set-Content release/release-notes.md -Encoding utf8
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: VoxKey-Windows
@@ -102,6 +130,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: release/release-notes.md
           files: |
             release/VoxKey-Setup-2.3.0.exe
             release/VoxKey-Setup-2.3.0.exe.sha256
