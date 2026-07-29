@@ -14,7 +14,8 @@ polishing, and paste continue locally in the background.
 
 - English-only speech recognition using local `small.en` (never `base.en`).
 - Local writing polish through a VoxKey-managed Ollama runtime and `qwen3.5:0.8b`.
-- No account, subscription, API key, cloud transcription, or raw-text fallback.
+- Long dictations use a fast filler-only pass to preserve wording and reduce latency.
+- No account, subscription, API key, cloud transcription, or failure-time raw-text fallback.
 - Speech/writer failure means no paste—not an unpolished transcript.
 
 ## Requirements

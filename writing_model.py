@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 import requests
@@ -10,6 +11,18 @@ import requests
 
 class WritingModelUnavailable(RuntimeError):
     """The required local writer cannot safely produce polished text."""
+
+
+LONG_DICTATION_CHARS = 1200
+_SPOKEN_FILLER_RE = re.compile(r"(?i)(?<!\w)(?:um+|uh+|erm+)(?!\w)[,;:!?]?\s*")
+
+
+def remove_spoken_fillers(text: str) -> str:
+    """Remove only obvious vocal fillers while preserving dictated wording."""
+    cleaned = _SPOKEN_FILLER_RE.sub("", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"[ \t]+([,.;!?])", r"\1", cleaned)
+    return cleaned.strip()
 
 
 @dataclass(frozen=True)
@@ -107,6 +120,11 @@ class WritingModelClient:
             raise WritingModelUnavailable("No speech to polish")
         if not self.model_name:
             raise WritingModelUnavailable("Select a local Ollama writing model")
+        if len(text) >= LONG_DICTATION_CHARS:
+            polished = remove_spoken_fillers(text)
+            if not polished:
+                raise WritingModelUnavailable("No speech remains after filler removal")
+            return polished
 
         prompt = (
             "Polish this English voice dictation for direct pasting. "

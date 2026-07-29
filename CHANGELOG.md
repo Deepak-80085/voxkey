@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- Use a fast filler-only cleanup for long dictations instead of a full rewrite.
 - Manage a pinned portable Ollama runtime and `qwen3.5:0.8b` under the VoxKey data directory with no external install or command.
 - Add resumable runtime download, SHA-256 verification, private port `11435`, streamed setup progress, and automatic first-run repair.
 - Add live Right Ctrl, F8, and F9 hotkey selection plus per-user Windows autostart.

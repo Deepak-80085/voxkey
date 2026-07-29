@@ -57,6 +57,18 @@ class WritingModelTests(unittest.TestCase):
         with self.assertRaises(WritingModelUnavailable):
             client.polish("hello")
 
+    def test_long_dictation_removes_fillers_without_rewriting_or_calling_model(self):
+        request = Mock(side_effect=AssertionError("long dictation should not call Ollama"))
+        client = WritingModelClient("test-model", request=request)
+        transcript = "Um, preserve this wording and order, uh exactly. " * 30
+
+        polished = client.polish(transcript)
+
+        self.assertNotIn("Um", polished)
+        self.assertNotIn("uh", polished)
+        self.assertIn("preserve this wording and order", polished)
+        request.assert_not_called()
+
     def test_repair_warms_an_available_model_before_reporting_ready(self):
         request = Mock(return_value=FakeResponse({"models": [{"name": "test-model"}]}))
         post = Mock(return_value=FakeResponse({"response": "ready"}))
