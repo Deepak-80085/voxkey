@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
-import sys
 import time
 from pathlib import Path
 
@@ -33,38 +33,74 @@ def word_error_rate(expected: str, actual: str) -> float:
     return previous[-1] / len(reference)
 
 
-def run_faster_whisper(model_name: str, audio_path: Path) -> tuple[str, float]:
-    from faster_whisper import WhisperModel
-
-    model = WhisperModel(model_name, device="cpu", compute_type="int8")
+def run_faster_whisper(manager, audio_path: Path, beam_size: int) -> tuple[str, float]:
     started = time.perf_counter()
-    segments, _ = model.transcribe(str(audio_path), language="en")
-    transcript = " ".join(segment.text for segment in segments).strip()
+    transcript = manager.transcribe(audio_path, beam_size=beam_size)
     return transcript, time.perf_counter() - started
 
 
 def main() -> None:
-    if len(sys.argv) != 7 or sys.argv[1:3] != ["--engine", "faster-whisper"] or sys.argv[5] != "--manifest":
-        raise SystemExit(
-            "Usage: run_benchmark.py --engine faster-whisper --model <model> --manifest <manifest.json>"
-        )
+    from speech_models import SUPPORTED_MODELS, SpeechModelManager
+    from voxkey_runtime import VoxKeyRuntime
+    from writing_model import TextFormatter
 
-    model_name = sys.argv[4]
-    manifest_path = Path(sys.argv[6])
+    parser = argparse.ArgumentParser(description="Compare labeled clips using VoxKey's production decoder")
+    parser.add_argument("--model", choices=SUPPORTED_MODELS, required=True)
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--beam-size", type=int, choices=(1, 3, 5), default=1)
+    parser.add_argument("--term", action="append", help="Override saved vocabulary; repeat per term")
+    parser.add_argument("--with-writer", action="store_true")
+    parser.add_argument("--max-wer", type=float)
+    args = parser.parse_args()
+    manifest_path = args.manifest
     entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+    runtime = VoxKeyRuntime()
+    manager = SpeechModelManager(
+        runtime,
+        vocabulary_provider=lambda: args.term if args.term is not None else runtime.load_settings()["vocabulary"],
+        model_name=args.model,
+    )
+    status = manager.health_check()
+    if not status.ready:
+        raise SystemExit(status.reason)
+    writer = None
+    if args.with_writer:
+        writer = TextFormatter(vocabulary_provider=lambda: runtime.load_settings()["vocabulary"])
     results = []
+    errors = words = 0
+    flow_errors = flow_words = 0
     for entry in entries:
         audio_path = manifest_path.parent / entry["audio"]
-        actual, elapsed_s = run_faster_whisper(model_name, audio_path)
-        results.append({
+        actual, elapsed_s = run_faster_whisper(manager, audio_path, args.beam_size)
+        reference_words = len(normalized_words(entry["expected"]))
+        clip_wer = word_error_rate(entry["expected"], actual)
+        errors += round(clip_wer * reference_words)
+        words += reference_words
+        result = {
             "audio": str(audio_path),
             "expected": entry["expected"],
             "actual": actual,
-            "word_error_rate": word_error_rate(entry["expected"], actual),
+            "word_error_rate": clip_wer,
             "elapsed_s": elapsed_s,
-        })
+        }
+        if "flow" in entry:
+            flow_wer = word_error_rate(entry["expected"], entry["flow"])
+            flow_errors += round(flow_wer * reference_words)
+            flow_words += reference_words
+            result["flow_word_error_rate"] = flow_wer
+        if writer:
+            started = time.perf_counter()
+            result["formatted"] = writer.polish(actual)
+            result["writer_elapsed_s"] = time.perf_counter() - started
+        results.append(result)
 
-    print(json.dumps({"engine": "faster-whisper", "model": model_name, "results": results}, indent=2))
+    aggregate_wer = errors / words if words else 0.0
+    summary = {"model": args.model, "device": status.device, "beam_size": args.beam_size, "vocabulary": args.term if args.term is not None else runtime.load_settings()["vocabulary"], "word_error_rate": aggregate_wer, "results": results}
+    if flow_words:
+        summary["flow_word_error_rate"] = flow_errors / flow_words
+    print(json.dumps(summary, indent=2))
+    if args.max_wer is not None and aggregate_wer > args.max_wer:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

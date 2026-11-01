@@ -1,16 +1,12 @@
-import ctypes
 import hashlib
 import io
-import os
-import subprocess
-import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import Mock
 
-from ollama_runtime import ManagedOllamaRuntime, OLLAMA_SHA256, _kernel32, bind_to_voxkey_lifetime
+from ollama_runtime import ManagedOllamaRuntime, OLLAMA_SHA256
 from voxkey_runtime import VoxKeyRuntime
 
 
@@ -58,32 +54,6 @@ class OllamaRuntimeTests(unittest.TestCase):
             )
             self.assertTrue(any('100%' in detail for detail in progress))
 
-    def test_start_uses_private_host_and_voxkey_model_directory(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            runtime = Mock(spec=VoxKeyRuntime)
-            runtime.runtime_dir.return_value = Path(temp_dir) / 'runtime'
-            runtime.models_dir.return_value = Path(temp_dir) / 'models'
-            executable = runtime.runtime_dir.return_value / 'ollama' / 'ollama.exe'
-            executable.parent.mkdir(parents=True)
-            executable.write_bytes(b'ollama')
-            response = Mock()
-            response.raise_for_status.return_value = None
-            request = Mock(side_effect=[ConnectionError('offline'), response])
-            popen = Mock()
-            manager = ManagedOllamaRuntime(
-                runtime,
-                request=request,
-                popen=popen,
-                sleep=Mock(),
-            )
-
-            manager.start()
-
-            environment = popen.call_args.kwargs['env']
-            self.assertEqual(environment['OLLAMA_HOST'], '127.0.0.1:11435')
-            self.assertEqual(environment['OLLAMA_MODELS'], str(Path(temp_dir) / 'models' / 'writer'))
-            self.assertEqual(popen.call_args.args[0], [str(executable), 'serve'])
-
     def test_install_resumes_partial_runtime_download(self):
         archive = io.BytesIO()
         with zipfile.ZipFile(archive, 'w') as bundle:
@@ -117,40 +87,26 @@ class OllamaRuntimeTests(unittest.TestCase):
             '56561a8f0a904483303c610e61af61c5a7b6f5496ce3707e207d25d4ff67b89e',
         )
 
-    @unittest.skipUnless(os.name == 'nt', 'Windows job objects')
-    def test_closing_job_kills_child_and_grandchild(self):
-        # Mirrors ollama.exe -> llama-server.exe: the grandchild must not outlive VoxKey.
-        script = (
-            'import subprocess, sys, time;'
-            'p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]);'
-            'print(p.pid, flush=True); time.sleep(60)'
-        )
-        parent = subprocess.Popen([sys.executable, '-c', script], stdout=subprocess.PIPE, text=True)
-        job = bind_to_voxkey_lifetime(parent)
-        grandchild = int(parent.stdout.readline())
-
-        _kernel32().CloseHandle(job)
-
-        parent.wait(timeout=5)
-        kernel32 = ctypes.WinDLL('kernel32')
-        handle = kernel32.OpenProcess(0x00100000, False, grandchild)  # SYNCHRONIZE
-        if handle:
-            self.assertEqual(kernel32.WaitForSingleObject(handle, 5000), 0, 'grandchild survived')
-            kernel32.CloseHandle(handle)
-
     def test_ensure_ready_installs_missing_runtime_before_start(self):
         runtime = Mock(spec=VoxKeyRuntime)
         runtime.runtime_dir.return_value = Path('runtime')
         runtime.models_dir.return_value = Path('models')
         manager = ManagedOllamaRuntime(runtime)
         manager.install = Mock()
-        manager.start = Mock()
         manager.is_installed = Mock(return_value=False)
 
         manager.ensure_ready()
 
         manager.install.assert_called_once_with(None)
-        manager.start.assert_called_once_with()
+
+    def test_ensure_ready_skips_download_when_installed(self):
+        manager = ManagedOllamaRuntime(Mock(spec=VoxKeyRuntime))
+        manager.install = Mock()
+        manager.is_installed = Mock(return_value=True)
+
+        manager.ensure_ready()
+
+        manager.install.assert_not_called()
 
 
 if __name__ == '__main__':

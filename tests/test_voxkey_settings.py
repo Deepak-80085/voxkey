@@ -77,6 +77,14 @@ class SettingsActionsTests(unittest.TestCase):
         self.assertTrue(runtime.save_settings.call_args.args[0]['start_with_windows'])
         update_autostart.assert_called_once_with(True)
 
+    def test_edit_learning_is_opt_in_and_saved(self):
+        from voxkey_ui import SettingsActions
+
+        runtime = Mock()
+        runtime.load_settings.return_value = {"learn_from_edits": False}
+        SettingsActions(Mock(), runtime).set_learn_from_edits(True)
+        self.assertTrue(runtime.save_settings.call_args.args[0]["learn_from_edits"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ release/
 *.sqlite
 *.sqlite3
 logs/
+benchmark/local_samples/
 
 # OS/editor
 .DS_Store

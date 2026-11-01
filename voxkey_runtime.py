@@ -41,6 +41,9 @@ class VoxKeyRuntime:
     def settings_path(self) -> Path:
         return self.data_dir() / "settings.json"
 
+    def memory_path(self) -> Path:
+        return self.data_dir() / "personal-memory.json"
+
     def models_dir(self) -> Path:
         path = self.data_dir() / "models"
         path.mkdir(parents=True, exist_ok=True)
@@ -61,10 +64,10 @@ class VoxKeyRuntime:
             "speech_model": "small.en",
             "hotkey": "right_ctrl",
             "microphone": None,
-            "ollama_model": "qwen3.5:0.8b",
             "vocabulary": [],
             "start_with_windows": False,
             "sounds_enabled": True,
+            "learn_from_edits": False,
         }
 
     def load_settings(self) -> dict:

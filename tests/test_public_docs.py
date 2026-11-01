@@ -11,7 +11,7 @@ class PublicRepositoryDocumentationTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         privacy = (ROOT / "docs" / "privacy.md").read_text(encoding="utf-8")
         self.assertIn("small.en", readme)
-        self.assertIn("qwen3.5:0.8b", readme)
+        self.assertNotIn("qwen3.5:0.8b", readme)  # LLM writer removed; formatting is rule-based
         self.assertNotIn("ollama pull", readme)
         self.assertIn("No audio or text leaves your computer", privacy)
         launch = (ROOT / "docs" / "launch.md").read_text(encoding="utf-8")

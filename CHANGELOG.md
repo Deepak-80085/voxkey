@@ -3,7 +3,15 @@
 ## [Unreleased]
 
 ### Changed
-- Use a fast filler-only cleanup for long dictations instead of a full rewrite.
+- Remove the local LLM writer: it changed words in 14/14 benchmark samples and was always discarded, so formatting is now rule-based only. Startup drops from 28-83 s to about 4 s and about 1 GB RAM plus 1 GB VRAM is freed; Ollama is kept only as the CUDA library source for Whisper.
+- Transcribe with int8 and read VoxKey WAVs directly (about 9% faster); write WAVs with the standard library instead of SciPy.
+- Learn close spelling corrections directly from edits in the target app; read a bounded caret region in long documents and allow two minutes for the edit.
+- Add opt-in local learning from short edits to VoxKey's own recent paste, with review for uncertain word changes.
+- Add local, reviewable correction memory, bounded dictation history, snippets, and app-specific formatting styles with tray controls.
+- Handle explicit single-word spoken backtracks while preserving unrelated dictated words.
+- Use fast local formatting for long dictations, already formatted transcripts, and explicit spoken commands instead of rewriting dictated words.
+- Guard local writer output against word changes, poor casing, missing punctuation, and truncation; restore preferred vocabulary casing.
+- Add spoken bullet points and a local known-text accuracy recorder/benchmark.
 - Manage a pinned portable Ollama runtime and `qwen3.5:0.8b` under the VoxKey data directory with no external install or command.
 - Add resumable runtime download, SHA-256 verification, private port `11435`, streamed setup progress, and automatic first-run repair.
 - Add live Right Ctrl, F8, and F9 hotkey selection plus per-user Windows autostart.
@@ -11,7 +19,7 @@
 - Remove VoxKey-owned runtime, models, settings, logs, recordings, and autostart state during uninstall.
 - Begin microphone capture immediately on Right Ctrl press and discard short taps.
 - Add live microphone selection with a system-default fallback.
-- Keep `small.en` after local comparison with Distil Large v3 on the target GTX 1650.
+- Keep `small.en` as the default and allow a per-user `distil-large-v3` selection after measuring its accuracy and GPU use on the target GTX 1650.
 - Add automated local Ollama model repair through the installed CLI.
 - Add a new VoxKey logo and Windows executable version metadata for 2.2.0.
 - Prepare CI to sign the app and installer when certificate secrets are configured.

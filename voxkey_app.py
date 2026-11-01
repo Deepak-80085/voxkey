@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import uuid
+import wave
 import winreg
 from pathlib import Path
 
@@ -16,15 +17,16 @@ import numpy as np
 import pyperclip
 import sounddevice as sd
 from pynput import keyboard
-from scipy.io.wavfile import write
 
 from ollama_runtime import ManagedOllamaRuntime
+from personal_memory import PersonalMemory
+from edit_learning import EditLearningWatcher
 from speech_models import SpeechModelManager
 from voxkey_events import EventBus, UiEvent
 from voxkey_ui import VoxKeyShell, create_qt_application
 from voxkey_controller import VoxKeyController
 from voxkey_runtime import AppState, VoxKeyRuntime
-from writing_model import WritingModelClient
+from writing_model import TextFormatter
 
 SAMPLE_RATE = 16_000
 HOLD_TRIGGER_S = 0.28
@@ -83,6 +85,29 @@ def get_foreground_window_handle() -> int | None:
     except Exception:
         return None
     return int(handle) if handle else None
+
+
+def get_window_app_name(hwnd: int | None) -> str | None:
+    """Read only the target process name for app-specific preferences."""
+    if not hwnd or _user32 is None or _kernel32 is None:
+        return None
+    process_id = ctypes.c_ulong()
+    if not _user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(process_id)):
+        return None
+    open_process = _kernel32.OpenProcess
+    open_process.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
+    open_process.restype = ctypes.c_void_p
+    process = open_process(0x1000, False, process_id.value)
+    if not process:
+        return None
+    try:
+        path = ctypes.create_unicode_buffer(1024)
+        length = ctypes.c_ulong(len(path))
+        if _kernel32.QueryFullProcessImageNameW(ctypes.c_void_p(process), 0, path, ctypes.byref(length)):
+            return Path(path.value).name.casefold()
+    finally:
+        _kernel32.CloseHandle(ctypes.c_void_p(process))
+    return None
 
 
 def restore_foreground_window_handle(target_hwnd: int | None) -> None:
@@ -200,7 +225,11 @@ class Recorder:
         if not chunks:
             raise RuntimeError("No audio captured")
         path = self.recordings_dir / f"recording-{uuid.uuid4().hex}.wav"
-        write(str(path), SAMPLE_RATE, np.concatenate(chunks, axis=0))
+        with wave.open(str(path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)  # int16
+            wav.setframerate(SAMPLE_RATE)
+            wav.writeframes(np.concatenate(chunks, axis=0).tobytes())
         return path
 
     def abort(self) -> None:
@@ -233,6 +262,7 @@ class HoldToDictateService:
         self.hotkey_started_at = None
         self.ignore_cycle = False
         self.paste_target_hwnd = None
+        self.paste_target_app = None
         self.listener = None
         self.jobs = queue.Queue()
         self.worker = threading.Thread(target=self._work, daemon=True)
@@ -263,6 +293,7 @@ class HoldToDictateService:
                 self.hotkey_started_at = time.monotonic()
                 self.ignore_cycle = False
                 self.paste_target_hwnd = get_foreground_window_handle()
+                self.paste_target_app = get_window_app_name(self.paste_target_hwnd)
                 self.logger.info("Dictation hotkey pressed; paste target=%s", self.paste_target_hwnd)
                 if self.controller.can_dictate():
                     try:
@@ -285,14 +316,16 @@ class HoldToDictateService:
         self.recording = False
         if not self.capture_started:
             self.paste_target_hwnd = None
+            self.paste_target_app = None
             self.recorder.abort()
             return
         self.capture_started = False
         target_hwnd, self.paste_target_hwnd = self.paste_target_hwnd, None
+        target_app, self.paste_target_app = self.paste_target_app, None
         try:
             audio_path = self.recorder.stop_and_save()
             self.logger.info("Recording saved: %s; target=%s", audio_path, target_hwnd)
-            self.jobs.put((audio_path, target_hwnd))
+            self.jobs.put((audio_path, target_hwnd, target_app))
             self._emit("capture_stopped", AppState.TRANSCRIBING)
         except Exception as exc:
             self.logger.exception("Recording stop failed")
@@ -309,6 +342,7 @@ class HoldToDictateService:
         self.recorder.abort()
         self.hotkey_down = self.recording = self.capture_started = False
         self.hotkey_started_at = self.paste_target_hwnd = None
+        self.paste_target_app = None
         self.hotkey_name = name
         self.trigger_key = HOTKEY_KEYS[name]
 
@@ -324,7 +358,6 @@ class HoldToDictateService:
         ):
             self.capture_started = True
             self.logger.info("Recording started")
-            threading.Thread(target=self.controller.warm_writer, daemon=True).start()
             self._emit("capture_started", AppState.LISTENING)
             self.controller._set_state(AppState.LISTENING)
 
@@ -333,10 +366,10 @@ class HoldToDictateService:
             job = self.jobs.get()
             if job is None:
                 return
-            audio_path, target_hwnd = job
+            audio_path, target_hwnd, target_app = job
             try:
                 self.logger.info("Processing recording: %s", audio_path)
-                pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd)
+                pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd, app=target_app)
                 self.logger.info("Recording processed; pasted=%s", pasted)
             except Exception:
                 self.logger.exception("Unexpected worker failure")
@@ -362,24 +395,29 @@ def main() -> None:
         return
     app = create_qt_application()
     runtime = VoxKeyRuntime()
+    memory = PersonalMemory(runtime.memory_path())
     runtime.install_exception_logging()
     settings = runtime.load_settings()
     set_start_with_windows(bool(settings.get("start_with_windows")))
     speech = SpeechModelManager(
-        runtime, vocabulary_provider=lambda: runtime.load_settings()["vocabulary"]
+        runtime,
+        vocabulary_provider=lambda: runtime.load_settings()["vocabulary"],
+        model_name=settings.get("speech_model", "small.en"),
     )
-    ollama = ManagedOllamaRuntime(runtime)
-    first_run = not ollama.is_installed()
-    writer = WritingModelClient(
-        settings["ollama_model"],
-        base_url=ollama.base_url,
-        runtime_manager=ollama,
-    )
+    cuda_runtime = ManagedOllamaRuntime(runtime)
+    first_run = not cuda_runtime.is_installed()
+    writer = TextFormatter(vocabulary_provider=lambda: runtime.load_settings()["vocabulary"])
     logger = runtime.logger()
     logger.info("VoxKey starting")
     events = EventBus()
+    edit_watcher = EditLearningWatcher(
+        memory, lambda: bool(runtime.load_settings().get("learn_from_edits")),
+        get_foreground_window_handle, logger, events,
+        preferred=lambda: runtime.load_settings().get("vocabulary", []),
+    )
     controller = VoxKeyController(
-        speech, writer, paste=paste_polished_text, logger=logger, events=events
+        speech, writer, paste=paste_polished_text, logger=logger, events=events,
+        memory=memory, edit_watcher=edit_watcher, prepare_runtime=cuda_runtime.ensure_ready,
     )
     threading.Thread(target=controller.start, daemon=True).start()
     service = HoldToDictateService(controller, runtime, logger=logger, events=events)
@@ -392,7 +430,6 @@ def main() -> None:
         stopped = True
         logger.info("VoxKey shutting down")
         service.stop()
-        ollama.stop()
         shell.close()
         app.quit()
 
@@ -405,6 +442,7 @@ def main() -> None:
         hotkeys=HOTKEY_CHOICES,
         set_hotkey=service.set_hotkey,
         set_autostart=set_start_with_windows,
+        memory=memory,
     )
     if first_run:
         shell.show_settings()

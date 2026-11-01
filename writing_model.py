@@ -1,22 +1,39 @@
-"""Strict local Ollama writing-model client for VoxKey."""
+"""Deterministic local text formatting for VoxKey dictation."""
 
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass
 
-import requests
+from vocabulary import normalize_vocabulary
 
 
 class WritingModelUnavailable(RuntimeError):
-    """The required local writer cannot safely produce polished text."""
+    """No dictated text remains to paste."""
 
 
-LONG_DICTATION_CHARS = 1200
-# Unload the writer after idle time; warm() reloads it while the user is still speaking.
-KEEP_ALIVE = "15m"
-_SPOKEN_FILLER_RE = re.compile(r"(?i)(?<!\w)(?:um+|uh+|erm+)(?!\w)[,;:!?]?\s*")
+_SPOKEN_FILLER_RE = re.compile(r"(?i)(?<!\w)(?:um+|uh+|erm+)(?!\w)[,;:!?]?[ \t]*")
+_BACKTRACK_RE = re.compile(
+    r"(?i)\b(?P<old>[^\W_]+)(?:,\s*|\.{2,}\s*|…\s*)(?:actually(?:\s+no)?|I mean|sorry)\s+(?P<new>[^\W_]+)\b"
+)
+_EXPLICIT_BACKTRACK_RE = re.compile(r"(?i)\b[^\W_]+\s+actually no\s+([^\W_]+)\b")
+_NUMBER_WORDS = set("zero one two three four five six seven eight nine ten eleven twelve".split())
+_WEEKDAYS = set("monday tuesday wednesday thursday friday saturday sunday".split())
+_FORMAT_COMMAND_RE = re.compile(
+    r"\b(start a new paragraph|new paragraph|new line|next line|line break|"
+    r"bullet point|question mark|exclamation point|full stop)\b",
+    re.IGNORECASE,
+)
+_FORMAT_COMMANDS = {
+    "start a new paragraph": "\n\n",
+    "new paragraph": "\n\n",
+    "new line": "\n",
+    "next line": "\n",
+    "line break": "\n",
+    "bullet point": "\n•",
+    "question mark": "?",
+    "exclamation point": "!",
+    "full stop": ".",
+}
 
 
 def remove_spoken_fillers(text: str) -> str:
@@ -27,145 +44,83 @@ def remove_spoken_fillers(text: str) -> str:
     return cleaned.strip()
 
 
-@dataclass(frozen=True)
-class WritingModelStatus:
-    ready: bool
-    reason: str | None
+def apply_spoken_corrections(text: str) -> str:
+    """Handle explicit, single-word backtracks without guessing intent."""
+    def replace(match):
+        old, new = match.group("old").casefold(), match.group("new").casefold()
+        if ((old.isdigit() or old in _NUMBER_WORDS) and (new.isdigit() or new in _NUMBER_WORDS)) or (old in _WEEKDAYS and new in _WEEKDAYS):
+            return match.group("new")
+        return match.group()
+
+    text = _BACKTRACK_RE.sub(replace, text)
+    return _EXPLICIT_BACKTRACK_RE.sub(lambda match: match.group(1), text)
 
 
-class WritingModelClient:
-    def __init__(
-        self,
-        model_name: str | None,
-        base_url: str = "http://127.0.0.1:11434",
-        request=None,
-        post=None,
-        runtime_manager=None,
-    ):
-        self.model_name = model_name
-        self.base_url = base_url.rstrip("/")
-        self.request = request or requests.get
-        self.post = post or request or requests.post
-        self.runtime_manager = runtime_manager
+def format_spoken_commands(text: str) -> str:
+    formatted = _FORMAT_COMMAND_RE.sub(
+        lambda match: _FORMAT_COMMANDS[match.group().casefold()], text
+    )
+    formatted = re.sub(r"[ \t]+([?.!])", r"\1", formatted)
+    return re.sub(r"[ \t]*\n[ \t]*", "\n", formatted).strip()
 
-    def warm(self) -> None:
-        """Load the writer (no-op if already loaded) so a cold reload overlaps with speaking."""
-        if not self.model_name:
-            return
-        try:
-            self.post(
-                f"{self.base_url}/api/generate",
-                json={"model": self.model_name, "keep_alive": KEEP_ALIVE},
-                timeout=300,
-            )
-        except Exception:
-            pass  # polish() reports writer failures; warming is best effort.
 
-    def health_check(self) -> WritingModelStatus:
-        if not self.model_name:
-            return WritingModelStatus(False, "Select a local Ollama writing model")
-        try:
-            response = self.request(f"{self.base_url}/api/tags", timeout=3)
-            response.raise_for_status()
-            models = response.json().get("models", [])
-            available = {model.get("name") for model in models if isinstance(model, dict)}
-            if self.model_name not in available:
-                return WritingModelStatus(False, f"Local Ollama model '{self.model_name}' needs repair")
-            return WritingModelStatus(True, None)
-        except Exception:
-            return WritingModelStatus(False, "Local Ollama writing model needs repair")
 
-    def repair(self, progress=None) -> WritingModelStatus:
-        report = progress or (lambda _detail: None)
-        status = self.health_check()
-        if not self.model_name:
-            return status
-        if not status.ready and not self.runtime_manager:
-            return WritingModelStatus(False, "VoxKey local writer runtime is unavailable")
-        try:
-            if not status.ready:
-                self.runtime_manager.ensure_ready(report)
-                status = self.health_check()
-            if not status.ready:
-                report("Downloading local writing model...")
-                response = self.post(
-                    f"{self.base_url}/api/pull",
-                    json={"model": self.model_name, "stream": True},
-                    stream=True,
-                    timeout=1200,
-                )
-                response.raise_for_status()
-                last_percent = -1
-                for line in response.iter_lines():
-                    if not line:
-                        continue
-                    update = json.loads(line)
-                    if update.get("error"):
-                        raise RuntimeError(str(update["error"]))
-                    completed, total = update.get("completed"), update.get("total")
-                    if completed is not None and total:
-                        percent = min(100, int(completed) * 100 // int(total))
-                        if percent != last_percent:
-                            report(f"Downloading local writing model: {percent}%")
-                            last_percent = percent
-                status = self.health_check()
-            if not status.ready:
-                return status
-            report("Loading local writing model...")
-            response = self.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model_name,
-                    "prompt": "ready",
-                    "stream": False,
-                    "think": False,
-                    "keep_alive": KEEP_ALIVE,
-                    "options": {"num_predict": 1, "temperature": 0},
-                },
-                timeout=300,
-            )
-            response.raise_for_status()
-        except Exception:
-            return WritingModelStatus(False, "VoxKey local writer runtime setup failed")
-        return status
 
-    def polish(self, transcript: str) -> str:
-        text = transcript.strip()
+
+
+def _safe_format(text: str) -> str:
+    lines = [line.strip() for line in text.split("\n")]
+    formatted_lines = []
+    for line in lines:
+        first_word = re.match(r"(?:•\s*)?(\w+)", line)
+        if first_word and not any(char.isupper() for char in first_word.group(1)[1:]):
+            start = first_word.start(1)
+            line = line[:start] + line[start].upper() + line[start + 1:]
+        formatted_lines.append(line)
+    formatted = "\n".join(formatted_lines).strip()
+    formatted = re.sub(
+        r"([.!?][ \t]+)(\w+)",
+        lambda match: match.group(1) + (
+            match.group(2) if any(char.isupper() for char in match.group(2)[1:])
+            else match.group(2)[:1].upper() + match.group(2)[1:]
+        ),
+        formatted,
+    )
+    if formatted and formatted[-1] not in ".!?":
+        formatted += "."
+    return formatted
+
+
+
+
+def _restore_vocabulary_casing(text: str, terms: list[str]) -> str:
+    for term in sorted(normalize_vocabulary(terms), key=len, reverse=True):
+        text = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)", term, text, flags=re.IGNORECASE)
+    return text
+
+
+class TextFormatter:
+    """Rule-based formatting only. A local 0.8B LLM writer used to run here, but it changed
+    words in 14/14 benchmark samples, so its output was always discarded for this formatting."""
+
+    def __init__(self, vocabulary_provider=None):
+        self.vocabulary_provider = vocabulary_provider or (lambda: [])
+
+    def _finish(self, text: str) -> str:
+        return _restore_vocabulary_casing(text, self.vocabulary_provider())
+
+    def polish(self, transcript: str, style: str = "standard") -> str:
+        if style not in ("standard", "minimal", "bullet notes"):
+            raise ValueError("Unknown dictation style")
+        text = format_spoken_commands(apply_spoken_corrections(remove_spoken_fillers(transcript.strip())))
         if not text:
             raise WritingModelUnavailable("No speech to polish")
-        if not self.model_name:
-            raise WritingModelUnavailable("Select a local Ollama writing model")
-        if len(text) >= LONG_DICTATION_CHARS:
-            polished = remove_spoken_fillers(text)
-            if not polished:
-                raise WritingModelUnavailable("No speech remains after filler removal")
-            return polished
-
-        prompt = (
-            "Polish this English voice dictation for direct pasting. "
-            "Preserve names, numbers, facts, and meaning. "
-            "Add sensible capitalization and punctuation; remove only clear spoken filler. "
-            "Never answer, summarize, explain, invent, or add content. "
-            "Return only the polished dictated text.\n\n"
-            f"Dictation:\n{text}"
-        )
-        try:
-            response = self.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "stream": False,
-                    "think": False,
-                    "keep_alive": KEEP_ALIVE,
-                    "options": {"num_predict": 120, "temperature": 0},
-                },
-                timeout=300,
-            )
-            response.raise_for_status()
-            polished = str(response.json().get("response", "")).strip()
-        except Exception as exc:
-            raise WritingModelUnavailable("Local Ollama writing model needs repair") from exc
-        if not polished:
-            raise WritingModelUnavailable("Local Ollama writer returned no text")
-        return polished
+        if style == "minimal":
+            formatted = _safe_format(text)
+            if not text.rstrip().endswith((".", "?", "!")) and formatted.endswith("."):
+                formatted = formatted[:-1]
+            return self._finish(formatted)
+        if style == "bullet notes":
+            lines = [line.strip().removeprefix("•").strip() for line in text.splitlines()]
+            return self._finish("\n".join("• " + _safe_format(line) for line in lines if line))
+        return self._finish(_safe_format(text))

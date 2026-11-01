@@ -58,6 +58,55 @@ class DictationPipelineTests(unittest.TestCase):
         self.assertEqual(paste.call_args.kwargs["target_hwnd"], 123)
         self.assertEqual(controller.state, AppState.READY)
 
+    def test_local_correction_runs_before_writer_and_history_only_after_paste(self):
+        speech, writer, memory = Mock(), Mock(), Mock()
+        speech.health_check.return_value = Mock(ready=True, reason=None)
+        writer.health_check.return_value = Mock(ready=True, reason=None)
+        speech.transcribe.return_value = "open vox key"
+        memory.correct.return_value = "open VoxKey"
+        memory.snippet_for.return_value = None
+        memory.style_for.return_value = "standard"
+        writer.polish.return_value = "Open VoxKey."
+        controller = VoxKeyController(speech, writer, paste=Mock(return_value=True), memory=memory)
+        controller.start()
+
+        self.assertTrue(controller.process_audio(Path("sample.wav"), app="editor.exe"))
+        memory.correct.assert_called_once_with("open vox key", "editor.exe")
+        writer.polish.assert_called_once_with("open VoxKey")
+        memory.remember_output.assert_called_once_with("Open VoxKey.", "editor.exe")
+
+    def test_saved_snippet_bypasses_writer(self):
+        speech, writer, memory = Mock(), Mock(), Mock()
+        speech.health_check.return_value = Mock(ready=True, reason=None)
+        writer.health_check.return_value = Mock(ready=True, reason=None)
+        speech.transcribe.return_value = "my meeting link"
+        memory.correct.return_value = "my meeting link"
+        memory.snippet_for.return_value = "https://example.com/meet"
+        memory.style_for.return_value = "standard"
+        paste = Mock(return_value=True)
+        controller = VoxKeyController(speech, writer, paste=paste, memory=memory)
+        controller.start()
+
+        self.assertTrue(controller.process_audio(Path("sample.wav")))
+        writer.polish.assert_not_called()
+        paste.assert_called_once_with("https://example.com/meet", target_hwnd=None)
+
+    def test_app_style_reaches_writer_and_failed_paste_is_not_saved(self):
+        speech, writer, memory = Mock(), Mock(), Mock()
+        speech.health_check.return_value = Mock(ready=True, reason=None)
+        writer.health_check.return_value = Mock(ready=True, reason=None)
+        speech.transcribe.return_value = "send the update"
+        memory.correct.return_value = "send the update"
+        memory.snippet_for.return_value = None
+        memory.style_for.return_value = "minimal"
+        writer.polish.return_value = "Send the update"
+        controller = VoxKeyController(speech, writer, paste=Mock(return_value=False), memory=memory)
+        controller.start()
+
+        self.assertFalse(controller.process_audio(Path("sample.wav"), app="notepad.exe"))
+        writer.polish.assert_called_once_with("send the update", style="minimal")
+        memory.remember_output.assert_not_called()
+
     def test_validation_ignores_repair_while_startup_check_is_running(self):
         entered = threading.Event()
         release = threading.Event()
@@ -82,29 +131,29 @@ class DictationPipelineTests(unittest.TestCase):
         speech.repair.assert_not_called()
         self.assertEqual(speech.health_check.call_count, 1)
 
-    def test_repair_prepares_writer_before_speech(self):
-        speech, writer = Mock(), Mock()
-        speech.repair.return_value = Mock(ready=True, reason=None)
-        writer.repair.return_value = Mock(ready=True, reason=None)
-        controller = VoxKeyController(speech, writer, paste=Mock())
+    def test_repair_prepares_gpu_runtime_before_speech(self):
+        speech = Mock()
         order = []
-        writer.repair.side_effect = lambda _progress: order.append('writer') or Mock(ready=True, reason=None)
         speech.repair.side_effect = lambda: order.append('speech') or Mock(ready=True, reason=None)
+        controller = VoxKeyController(
+            speech, Mock(), paste=Mock(), prepare_runtime=lambda _progress: order.append('runtime')
+        )
 
         controller.repair_models()
 
-        self.assertEqual(order, ['writer', 'speech'])
+        self.assertEqual(order, ['runtime', 'speech'])
         self.assertEqual(controller.state, AppState.READY)
 
-    def test_start_automatically_prepares_writer_runtime(self):
-        speech, writer = Mock(), Mock()
+    def test_gpu_runtime_failure_still_lets_speech_load(self):
+        speech = Mock()
         speech.health_check.return_value = Mock(ready=True, reason=None)
-        writer.repair.return_value = Mock(ready=True, reason=None)
-        controller = VoxKeyController(speech, writer, paste=Mock())
+        controller = VoxKeyController(
+            speech, Mock(), paste=Mock(), prepare_runtime=Mock(side_effect=RuntimeError('offline'))
+        )
 
         controller.start()
 
-        writer.repair.assert_called_once()
+        speech.health_check.assert_called_once()
         self.assertEqual(controller.state, AppState.READY)
 
 

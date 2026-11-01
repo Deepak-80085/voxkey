@@ -60,7 +60,7 @@ jobs:
           iscc installer/VoxKey.iss
       - name: Smoke-test installer
         run: |
-          $installer = (Resolve-Path release\VoxKey-Setup-2.3.0.exe).Path
+          $installer = (Resolve-Path release\VoxKey-Setup-2.6.0.exe).Path
           $install = Start-Process $installer `
             -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' `
             -Wait -PassThru
@@ -73,8 +73,8 @@ jobs:
           if (-not (Test-Path $exe)) {
             throw "Installer did not create $exe."
           }
-          if ((Get-Item $exe).VersionInfo.ProductVersion -ne '2.3.0') {
-            throw "Installed VoxKey version is not 2.3.0."
+          if ((Get-Item $exe).VersionInfo.ProductVersion -ne '2.6.0') {
+            throw "Installed VoxKey version is not 2.6.0."
           }
 
           $uninstaller = Join-Path $installDir 'unins000.exe'
@@ -91,13 +91,13 @@ jobs:
         if: env.WINDOWS_CERTIFICATE != '' && env.WINDOWS_CERTIFICATE_PASSWORD != ''
         run: |
           .\scripts\sign_windows.ps1 `
-            -Files release\VoxKey-Setup-2.3.0.exe `
+            -Files release\VoxKey-Setup-2.6.0.exe `
             -CertificatePath "$env:RUNNER_TEMP\voxkey.pfx" `
             -CertificatePassword $env:WINDOWS_CERTIFICATE_PASSWORD
       - name: Checksum
         run: |
-          $hash = (Get-FileHash release/VoxKey-Setup-2.3.0.exe -Algorithm SHA256).Hash
-          "$hash  VoxKey-Setup-2.3.0.exe" | Set-Content release/VoxKey-Setup-2.3.0.exe.sha256
+          $hash = (Get-FileHash release/VoxKey-Setup-2.6.0.exe -Algorithm SHA256).Hash
+          "$hash  VoxKey-Setup-2.6.0.exe" | Set-Content release/VoxKey-Setup-2.6.0.exe.sha256
       - name: Prepare release notes
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -124,13 +124,13 @@ jobs:
         with:
           name: VoxKey-Windows
           path: |
-            release/VoxKey-Setup-2.3.0.exe
-            release/VoxKey-Setup-2.3.0.exe.sha256
+            release/VoxKey-Setup-2.6.0.exe
+            release/VoxKey-Setup-2.6.0.exe.sha256
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           body_path: release/release-notes.md
           files: |
-            release/VoxKey-Setup-2.3.0.exe
-            release/VoxKey-Setup-2.3.0.exe.sha256
+            release/VoxKey-Setup-2.6.0.exe
+            release/VoxKey-Setup-2.6.0.exe.sha256
