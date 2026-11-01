@@ -324,6 +324,7 @@ class HoldToDictateService:
         ):
             self.capture_started = True
             self.logger.info("Recording started")
+            threading.Thread(target=self.controller.warm_writer, daemon=True).start()
             self._emit("capture_started", AppState.LISTENING)
             self.controller._set_state(AppState.LISTENING)
 

@@ -22,6 +22,9 @@ class Recorder:
 class Controller:
     state = AppState.READY
 
+    def warm_writer(self):
+        pass
+
     def can_dictate(self):
         return True
 

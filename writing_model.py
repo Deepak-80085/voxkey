@@ -14,6 +14,8 @@ class WritingModelUnavailable(RuntimeError):
 
 
 LONG_DICTATION_CHARS = 1200
+# Unload the writer after idle time; warm() reloads it while the user is still speaking.
+KEEP_ALIVE = "15m"
 _SPOKEN_FILLER_RE = re.compile(r"(?i)(?<!\w)(?:um+|uh+|erm+)(?!\w)[,;:!?]?\s*")
 
 
@@ -45,6 +47,19 @@ class WritingModelClient:
         self.request = request or requests.get
         self.post = post or request or requests.post
         self.runtime_manager = runtime_manager
+
+    def warm(self) -> None:
+        """Load the writer (no-op if already loaded) so a cold reload overlaps with speaking."""
+        if not self.model_name:
+            return
+        try:
+            self.post(
+                f"{self.base_url}/api/generate",
+                json={"model": self.model_name, "keep_alive": KEEP_ALIVE},
+                timeout=300,
+            )
+        except Exception:
+            pass  # polish() reports writer failures; warming is best effort.
 
     def health_check(self) -> WritingModelStatus:
         if not self.model_name:
@@ -104,7 +119,7 @@ class WritingModelClient:
                     "prompt": "ready",
                     "stream": False,
                     "think": False,
-                    "keep_alive": "24h",
+                    "keep_alive": KEEP_ALIVE,
                     "options": {"num_predict": 1, "temperature": 0},
                 },
                 timeout=300,
@@ -142,8 +157,7 @@ class WritingModelClient:
                     "prompt": prompt,
                     "stream": False,
                     "think": False,
-                    # Avoid reloading the local writer after each dictation.
-                    "keep_alive": "24h",
+                    "keep_alive": KEEP_ALIVE,
                     "options": {"num_predict": 120, "temperature": 0},
                 },
                 timeout=300,

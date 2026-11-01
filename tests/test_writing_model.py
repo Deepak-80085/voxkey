@@ -46,7 +46,7 @@ class WritingModelTests(unittest.TestCase):
         self.assertIn("Preserve names, numbers, facts, and meaning", payload["prompt"])
         self.assertTrue(payload["stream"] is False)
         self.assertFalse(payload["think"])
-        self.assertEqual(payload["keep_alive"], "24h")
+        self.assertEqual(payload["keep_alive"], "15m")
         self.assertEqual(payload["options"]["num_predict"], 120)
         self.assertEqual(request.call_args.kwargs["timeout"], 300)
 

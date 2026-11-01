@@ -1,12 +1,16 @@
+import ctypes
 import hashlib
 import io
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import Mock
 
-from ollama_runtime import ManagedOllamaRuntime, OLLAMA_SHA256
+from ollama_runtime import ManagedOllamaRuntime, OLLAMA_SHA256, _kernel32, bind_to_voxkey_lifetime
 from voxkey_runtime import VoxKeyRuntime
 
 
@@ -112,6 +116,27 @@ class OllamaRuntimeTests(unittest.TestCase):
             OLLAMA_SHA256,
             '56561a8f0a904483303c610e61af61c5a7b6f5496ce3707e207d25d4ff67b89e',
         )
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows job objects')
+    def test_closing_job_kills_child_and_grandchild(self):
+        # Mirrors ollama.exe -> llama-server.exe: the grandchild must not outlive VoxKey.
+        script = (
+            'import subprocess, sys, time;'
+            'p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"]);'
+            'print(p.pid, flush=True); time.sleep(60)'
+        )
+        parent = subprocess.Popen([sys.executable, '-c', script], stdout=subprocess.PIPE, text=True)
+        job = bind_to_voxkey_lifetime(parent)
+        grandchild = int(parent.stdout.readline())
+
+        _kernel32().CloseHandle(job)
+
+        parent.wait(timeout=5)
+        kernel32 = ctypes.WinDLL('kernel32')
+        handle = kernel32.OpenProcess(0x00100000, False, grandchild)  # SYNCHRONIZE
+        if handle:
+            self.assertEqual(kernel32.WaitForSingleObject(handle, 5000), 0, 'grandchild survived')
+            kernel32.CloseHandle(handle)
 
     def test_ensure_ready_installs_missing_runtime_before_start(self):
         runtime = Mock(spec=VoxKeyRuntime)

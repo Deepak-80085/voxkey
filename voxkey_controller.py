@@ -79,6 +79,9 @@ class VoxKeyController:
     def can_dictate(self) -> bool:
         return self.state is AppState.READY
 
+    def warm_writer(self) -> None:
+        self.writer.warm()
+
     def process_audio(self, audio_path: Path, target_hwnd=None) -> bool:
         if self.state not in (AppState.READY, AppState.LISTENING):
             return False

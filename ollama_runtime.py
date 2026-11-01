@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import os
 import shutil
@@ -9,6 +10,7 @@ import subprocess
 import time
 import urllib.request
 import zipfile
+from ctypes import wintypes
 from pathlib import Path
 
 import requests
@@ -21,6 +23,55 @@ OLLAMA_URL = (
 )
 OLLAMA_SHA256 = "56561a8f0a904483303c610e61af61c5a7b6f5496ce3707e207d25d4ff67b89e"
 OLLAMA_HOST = "127.0.0.1:11435"
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+
+
+class _JobExtendedLimits(ctypes.Structure):
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_int64),
+        ("PerJobUserTimeLimit", ctypes.c_int64),
+        ("LimitFlags", wintypes.DWORD),
+        ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t),
+        ("ActiveProcessLimit", wintypes.DWORD),
+        ("Affinity", ctypes.c_size_t),
+        ("PriorityClass", wintypes.DWORD),
+        ("SchedulingClass", wintypes.DWORD),
+        ("IoInfo", ctypes.c_uint64 * 6),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+def _kernel32():
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    return kernel32
+
+
+def bind_to_voxkey_lifetime(process: subprocess.Popen):
+    """Put Ollama in a kill-on-close job. Ollama's llama-server child inherits the job, so the
+    whole tree dies when VoxKey closes the handle or exits for any reason, including a crash."""
+    kernel32 = _kernel32()
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        raise ctypes.WinError(ctypes.get_last_error())
+    limits = _JobExtendedLimits(LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+    if not (
+        kernel32.SetInformationJobObject(job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(limits), ctypes.sizeof(limits))
+        and kernel32.AssignProcessToJobObject(job, int(process._handle))
+    ):
+        error = ctypes.WinError(ctypes.get_last_error())
+        kernel32.CloseHandle(job)
+        raise error
+    return job
 
 
 class ManagedOllamaRuntime:
@@ -40,6 +91,7 @@ class ManagedOllamaRuntime:
         self.sleep = sleep
         self.expected_sha256 = expected_sha256
         self.process = None
+        self.job = None
 
     @property
     def base_url(self) -> str:
@@ -158,6 +210,11 @@ class ManagedOllamaRuntime:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        if os.name == "nt" and isinstance(self.process, subprocess.Popen):
+            try:
+                self.job = bind_to_voxkey_lifetime(self.process)
+            except OSError:
+                self.job = None  # Dictation still works; only orphan cleanup is lost.
         for _attempt in range(60):
             if self._healthy():
                 return
@@ -166,6 +223,10 @@ class ManagedOllamaRuntime:
         raise RuntimeError("VoxKey Ollama runtime did not start")
 
     def stop(self) -> None:
+        if self.job:
+            # Closing the job kills Ollama and its llama-server child together.
+            _kernel32().CloseHandle(self.job)
+            self.job = None
         if not self.process or self.process.poll() is not None:
             return
         self.process.terminate()
