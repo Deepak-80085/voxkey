@@ -20,11 +20,14 @@ from voxkey_runtime import VoxKeyRuntime
 MODEL_NAME = "small.en"
 MODEL_REPOSITORY = "Systran/faster-whisper-small.en"
 SUPPORTED_MODELS = {
-    MODEL_NAME: (MODEL_REPOSITORY, "speech", "int8"),  # ~6% faster than int8_float16 on a GTX 1650, same WER
+    # (repo, folder, compute type, device). small.en runs on CPU: same speed as CUDA (3.46 s vs 3.51 s on a 6.6 s clip),
+    # and a CUDA context keeps the GPU awake (adds heat) until the process exits.
+    MODEL_NAME: (MODEL_REPOSITORY, "speech", "int8", "cpu"),
     "distil-large-v3": (
         "Systran/faster-distil-whisper-large-v3",
         "speech-distil-large-v3",
         "int8",
+        "cuda",  # CUDA when available, CPU fallback
     ),
 }
 
@@ -142,8 +145,9 @@ class SpeechModelManager:
             if not self._valid_model_directory(model_dir):
                 raise RuntimeError("VoxKey speech model is missing or empty")
 
-            self._configure_cuda_runtime_search_path()
-            if not self.cuda_checker():
+            if SUPPORTED_MODELS[self.model_name][3] == "cuda":
+                self._configure_cuda_runtime_search_path()
+            if SUPPORTED_MODELS[self.model_name][3] == "cuda" and not self.cuda_checker():
                 try:
                     self.model = self._load(model_dir, "cuda", SUPPORTED_MODELS[self.model_name][2])
                     self.device = "cuda"

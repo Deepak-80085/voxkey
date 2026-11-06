@@ -22,7 +22,7 @@ polishing, and paste continue locally in the background.
 ## Requirements
 
 - Windows 10/11 x64
-- NVIDIA GPU is optional; VoxKey uses it when the local runtime is available and otherwise uses the selected speech model on CPU.
+- NVIDIA GPU is optional; only the optional `distil-large-v3` model uses it (when the local runtime is available, else CPU). The default `small.en` always runs on CPU, so the GPU can sleep.
 - Internet access and several gigabytes of free disk space are required during first-run setup. Dictation works offline after setup.
 
 ## Install and use

@@ -64,11 +64,25 @@ class SpeechModelTests(unittest.TestCase):
 
         logger.info.assert_any_call("Transcribing with device=%s", "cuda")
 
-    def test_gpu_load_failure_retries_same_small_en_model_on_cpu(self):
+    def test_small_en_uses_cpu_and_never_touches_cuda(self):
+        loader, cuda_checker = Mock(return_value=Mock()), Mock(return_value=[])
+        manager = SpeechModelManager(self.runtime, model_loader=loader, cuda_checker=cuda_checker)
+        manager.dll_directory_adder = Mock()
+
+        with patch.object(manager, "_ensure_model", return_value=self.model_dir):
+            status = manager.health_check()
+
+        self.assertEqual((status.ready, status.device), (True, "cpu"))
+        self.assertEqual([c.kwargs["device"] for c in loader.call_args_list], ["cpu"])
+        cuda_checker.assert_not_called()
+        manager.dll_directory_adder.assert_not_called()
+
+    def test_gpu_load_failure_retries_same_distil_model_on_cpu(self):
         cpu_model = Mock()
         loader = Mock(side_effect=[RuntimeError("GPU unavailable"), cpu_model])
         manager = SpeechModelManager(
             self.runtime,
+            model_name="distil-large-v3",
             model_loader=loader,
             cuda_checker=lambda: [],
         )
