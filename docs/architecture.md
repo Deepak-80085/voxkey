@@ -4,7 +4,7 @@
 Configurable hold-hotkey listener
   -> capture original foreground HWND
   -> sounddevice microphone capture
-  -> local faster-whisper small.en by default or selected distil-large-v3 (GPU when available, same-model CPU fallback)
+  -> local faster-whisper small.en by default (always CPU int8) or selected distil-large-v3 (GPU when available, same-model CPU fallback)
   -> VoxKey-owned Ollama on 127.0.0.1:11435
   -> local qwen3.5:0.8b writing polish
   -> restore HWND and Ctrl+V polished text
