@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from window_focus import UiaSearchBox, focus_app, focus_new, is_foreground
@@ -197,9 +198,11 @@ class CommandRunner:
     def __init__(self, logger=None, known: Known | None = None, start_apps=get_start_apps,
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
                  keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic,
-                 new_window=focus_new, drive_root=drive_root, folder_roots=lambda: (), index_roots=None):
+                 new_window=focus_new, drive_root=drive_root, folder_roots=lambda: (), index_roots=None,
+                 sites_provider=lambda: {}):
         self.logger = logger
         self.known = known or Known()
+        self._sites = sites_provider  # saved websites, read on every command so edits apply without restart
         self._start_apps = start_apps
         self._launch = launch
         self._focus = focus
@@ -243,7 +246,7 @@ class CommandRunner:
             return
 
     def parse(self, text: str) -> Command | None:
-        return parse(text, self.known)
+        return parse(text, replace(self.known, sites={**self.known.sites, **self._sites()}))
 
     def _app_id(self, name: str) -> str | None:
         wanted = name.casefold()

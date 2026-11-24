@@ -16,7 +16,7 @@ class PersonalMemory:
     def __init__(self, path: Path):
         self.path = Path(path)
         self._lock = threading.RLock()
-        self._data = {"corrections": [], "suggestions": [], "history": [], "snippets": [], "styles": {}}
+        self._data = {"corrections": [], "suggestions": [], "history": [], "snippets": [], "sites": [], "styles": {}}
         self.load_error = None
         try:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
@@ -194,6 +194,29 @@ class PersonalMemory:
             self._check_editable()
             snippets = self._data["snippets"]
             snippets[:] = [item for item in snippets if item["cue"].casefold() != cue.casefold()]
+            self._save()
+
+    def list_sites(self) -> list[dict]:
+        with self._lock:
+            return [dict(item) for item in self._data["sites"]]
+
+    def add_site(self, name: str, url: str) -> None:
+        name = self._phrase(name, "Website name")
+        url = url.strip()
+        if not re.fullmatch(r"https?://\S+", url):
+            raise ValueError("Web address must start with https:// or http://")
+        with self._lock:
+            self._check_editable()
+            sites = self._data["sites"]
+            sites[:] = [item for item in sites if item["name"].casefold() != name.casefold()]
+            sites.append({"name": name, "url": url})
+            self._save()
+
+    def delete_site(self, name: str) -> None:
+        with self._lock:
+            self._check_editable()
+            sites = self._data["sites"]
+            sites[:] = [item for item in sites if item["name"].casefold() != name.casefold()]
             self._save()
 
     def snippet_for(self, text: str) -> str | None:

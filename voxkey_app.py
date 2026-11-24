@@ -392,6 +392,12 @@ def dispatch_ui_events(events: EventBus, shell: VoxKeyShell) -> None:
         shell.handle_event(event)
 
 
+def command_words(settings: dict, memory: PersonalMemory) -> list[str]:
+    """Names for the second "open ..." Whisper pass only: settings words plus saved website names."""
+    return [*[w for w in settings.get("command_words") or [] if isinstance(w, str)],
+            *[s["name"] for s in memory.list_sites()]]
+
+
 def main() -> None:
     if not claim_single_instance():
         notify_already_running()
@@ -405,8 +411,7 @@ def main() -> None:
     speech = SpeechModelManager(
         runtime,
         vocabulary_provider=lambda: runtime.load_settings()["vocabulary"],
-        command_words_provider=lambda: [w for w in runtime.load_settings().get("command_words") or []
-                                        if isinstance(w, str)],
+        command_words_provider=lambda: command_words(runtime.load_settings(), memory),
         model_name=settings.get("speech_model", "small.en"),
     )
     cuda_runtime = ManagedOllamaRuntime(runtime)
@@ -421,7 +426,8 @@ def main() -> None:
         preferred=lambda: runtime.load_settings().get("vocabulary", []),
     )
     commands = CommandRunner(logger, known_from(settings, read_chrome_state()),
-                             folder_roots=lambda: runtime.load_settings().get("folder_roots") or ())
+                             folder_roots=lambda: runtime.load_settings().get("folder_roots") or (),
+                             sites_provider=lambda: {s["name"]: s["url"] for s in memory.list_sites()})
     commands.warm()
     controller = VoxKeyController(
         speech, writer, paste=paste_polished_text, logger=logger, events=events,

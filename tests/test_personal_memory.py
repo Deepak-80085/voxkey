@@ -63,6 +63,34 @@ class PersonalMemoryTests(unittest.TestCase):
             self.assertIsNone(PersonalMemory(path).snippet_for("my meeting link"))
             self.assertEqual(PersonalMemory(path).style_for("notepad.exe"), "standard")
 
+    def test_saved_websites_add_list_delete_and_persist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory.json"
+            memory = PersonalMemory(path)
+            memory.add_site("Acme board", "https://board.example.com/#home")
+            memory.add_site("acme BOARD", "http://board.example.com/new")  # same name replaces
+            self.assertEqual(PersonalMemory(path).list_sites(),
+                             [{"name": "acme BOARD", "url": "http://board.example.com/new"}])
+            memory.delete_site("ACME board")
+            self.assertEqual(PersonalMemory(path).list_sites(), [])
+
+    def test_bad_website_is_rejected_and_nothing_saved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            for name, url in [("Acme board", "board.example.com"), ("Acme board", "javascript:alert(1)"),
+                              ("Acme board", "https://"), ("  ", "https://example.com")]:
+                with self.assertRaises(ValueError):
+                    memory.add_site(name, url)
+            self.assertEqual(memory.list_sites(), [])
+
+    def test_saved_website_names_feed_command_words_only(self):
+        from voxkey_app import command_words
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            memory.add_site("Acme board", "https://board.example.com")
+            self.assertEqual(command_words({"command_words": ["Brightfern", 5]}, memory), ["Brightfern", "Acme board"])
+            self.assertEqual(command_words({}, memory), ["Acme board"])
+
 
 if __name__ == "__main__":
     unittest.main()

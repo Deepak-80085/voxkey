@@ -58,6 +58,14 @@ class CommandRunnerTests(unittest.TestCase):
         self.assertEqual((ok, detail), (False, "Account not clear"))
         launch.assert_not_called()
 
+    def test_saved_sites_reach_the_parser_live(self):
+        sites = {}
+        r = CommandRunner(Mock(), sites_provider=lambda: sites)
+        self.assertIsNone(r.parse("open acme board"))
+        sites["Acme board"] = "https://board.example.com"
+        self.assertEqual(r.parse("open acme board").url, "https://board.example.com")
+        self.assertEqual(r.parse("open github").name, "GitHub")  # built-ins stay
+
     def test_success_only_when_the_window_is_in_front(self):
         focus = Mock(return_value=True)
         ok, _ = runner(focus=focus).run(Command("app", "Slack"))
