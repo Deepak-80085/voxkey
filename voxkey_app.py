@@ -426,6 +426,7 @@ def main() -> None:
         preferred=lambda: runtime.load_settings().get("vocabulary", []),
     )
     commands = CommandRunner(logger, known_from(settings, read_chrome_state()),
+                             known_provider=lambda: known_from(runtime.load_settings(), read_chrome_state()),
                              folder_roots=lambda: runtime.load_settings().get("folder_roots") or (),
                              sites_provider=lambda: {s["name"]: s["url"] for s in memory.list_sites()})
     commands.warm()

@@ -228,9 +228,10 @@ class CommandRunner:
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
                  keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic,
                  new_window=focus_new, drive_root=drive_root, folder_roots=lambda: (), index_roots=None,
-                 sites_provider=lambda: {}, chrome_state=read_chrome_state, chrome_path=find_chrome):
+                 sites_provider=lambda: {}, chrome_state=read_chrome_state, chrome_path=find_chrome, known_provider=None):
         self.logger = logger
         self.known = known or Known()
+        self._known_provider = known_provider  # rebuilt on every command: new Chrome profiles and settings apply without restart
         self._chrome_state, self._chrome_path = chrome_state, chrome_path
         self._sites = sites_provider  # saved websites, read on every command so edits apply without restart
         self._start_apps = start_apps
@@ -276,6 +277,8 @@ class CommandRunner:
             return
 
     def parse(self, text: str) -> Command | None:
+        if self._known_provider:
+            self.known = self._known_provider()
         return parse(text, replace(self.known, sites={**self.known.sites, **self._sites()}))
 
     def _app_id(self, name: str) -> str | None:
@@ -366,15 +369,21 @@ class CommandRunner:
         return True, f"Searched {name} for {target}"
 
     def _site(self, command: Command) -> tuple[bool, str]:
-        """Open the URL in Chrome in the profile of the spoken account (none spoken: Chrome's last-used profile)."""
+        """Open the URL in Chrome in the profile of the spoken account (none spoken: the default account's profile)."""
         self.focused_at = None
         if command.account in (AMBIGUOUS, UNKNOWN):
             return False, f"Account not clear: {command.heard}"
+        if not re.match(r"https?://", command.url):  # trust boundary: the URL goes on Chrome's command line
+            return False, "Website address not allowed"
         flag = []
+        state = self._chrome_state()
         if command.account:
-            folder = chrome_profile(self._chrome_state(), command.account)
+            folder = chrome_profile(state, command.account)
             if not folder:
                 return False, f"No Chrome profile for {command.account}"
+        else:  # no person spoken = the user; no default or no profile for it: no flag, Chrome picks
+            folder = chrome_profile(state, self.known.default_account) if self.known.default_account else None
+        if folder:
             flag = [f"--profile-directory={folder}"]
         chrome = self._chrome_path()
         if not chrome:
@@ -385,6 +394,7 @@ class CommandRunner:
         def start():
             self._launch(argv)
 
+        # ponytail: focus_new takes the newest Chrome window; a Chrome window opened by someone else in the same moment could be picked. Ceiling accepted; fix by matching the window title to the URL.
         try:
             hwnd = self._new_window("chrome", start)
         except OSError:

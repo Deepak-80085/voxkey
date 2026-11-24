@@ -27,6 +27,10 @@ class PersonalMemory:
                 for key in self._data:
                     if isinstance(loaded.get(key), type(self._data[key])):
                         self._data[key] = loaded[key]
+                # hand-edited file: keep only well-formed sites with a safe address (it ends up on Chrome's command line)
+                self._data["sites"] = [x for x in self._data["sites"] if isinstance(x, dict)
+                                       and isinstance(x.get("name"), str) and isinstance(x.get("url"), str)
+                                       and self._valid_url(x["url"])]
         except FileNotFoundError:
             pass
         except (OSError, ValueError) as exc:
@@ -52,6 +56,11 @@ class PersonalMemory:
         if not value or len(value) > 60 or "\n" in value or not any(char.isalnum() for char in value):
             raise ValueError(f"{field} must be 1–60 characters and contain a letter or number")
         return value
+
+    @staticmethod
+    def _valid_url(url: str) -> bool:
+        return bool(re.fullmatch(r"https?://\S+", url)) and len(url) <= 2048 and '"' not in url and not any(
+            unicodedata.category(char) == "Cc" for char in url)
 
     @staticmethod
     def _app(value: str | None) -> str | None:
@@ -206,8 +215,7 @@ class PersonalMemory:
     def add_site(self, name: str, url: str) -> None:
         name = self._phrase(name, "Website name")
         url = url.strip()
-        if not re.fullmatch(r"https?://\S+", url) or len(url) > 2048 or '"' in url or any(
-                unicodedata.category(char) == "Cc" for char in url):
+        if not self._valid_url(url):
             raise ValueError("Web address must be http(s), up to 2048 characters, with no spaces, quotes, or control characters")
         if name.casefold() in {app.casefold() for app in (*APPS, "Claude Code")}:
             raise ValueError(f"{name} is an app name; pick another name for the website")

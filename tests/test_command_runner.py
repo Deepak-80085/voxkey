@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import command_runner
 from command_runner import CommandRunner, PynputKeys, known_from
 from window_focus import EDIT_TYPES, looks_like_search
-from voice_commands import AMBIGUOUS, UNKNOWN, Command
+from voice_commands import AMBIGUOUS, UNKNOWN, Command, Known
 
 APPS = [
     {"Name": "Slack", "AppID": "Slack.App.Id"},
@@ -90,11 +90,42 @@ class CommandRunnerTests(unittest.TestCase):
         site_runner(launch)[0].run(Command("site", "Gmail", url="https://x.test", account="ANN@acme.TEST"))
         self.assertIn("--profile-directory=Profile 7", launch.call_args.args[0])
 
-    def test_site_with_no_account_sets_no_profile_so_chrome_uses_its_last_one(self):
+    def test_site_with_no_account_uses_the_default_account_profile(self):
         launch = Mock()
-        ok, _ = site_runner(launch)[0].run(Command("site", "YouTube", url="https://www.youtube.com"))
+        r = site_runner(launch)[0]
+        r.known = Known(default_account="ann@acme.test")
+        ok, _ = r.run(Command("site", "YouTube", url="https://www.youtube.com"))
         self.assertTrue(ok)
-        launch.assert_called_once_with([CHROME, "--new-window", "https://www.youtube.com"])
+        launch.assert_called_once_with([CHROME, "--profile-directory=Profile 7", "--new-window", "https://www.youtube.com"])
+
+    def test_site_with_no_default_account_or_no_profile_sets_no_profile_flag(self):
+        for known in (Known(), Known(default_account="zed@acme.test")):
+            launch = Mock()
+            r = site_runner(launch)[0]
+            r.known = known
+            ok, _ = r.run(Command("site", "YouTube", url="https://www.youtube.com"))
+            self.assertTrue(ok)
+            launch.assert_called_once_with([CHROME, "--new-window", "https://www.youtube.com"])
+
+    def test_site_refuses_a_url_that_is_not_http(self):
+        for url in ("--disable-web-security", "file:///c:/x", "javascript:alert(1)", ""):
+            launch = Mock()
+            ok, detail = site_runner(launch)[0].run(Command("site", "Evil", url=url))
+            self.assertEqual((ok, detail), (False, "Website address not allowed"))
+            launch.assert_not_called()
+
+    def test_profile_added_after_startup_resolves_without_restart(self):
+        state = {"profile": {"info_cache": {}}}
+        launch = Mock()
+        r = CommandRunner(Mock(), launch=launch, new_window=lambda n, start: (start(), 5)[1],
+                          chrome_state=lambda: state, chrome_path=lambda: CHROME,
+                          known_provider=lambda: command_runner.known_from({"self_name": "ann", "orgs": {"acme": "acme.test"}}, state))
+        self.assertEqual(r.parse("open gmail in ann acme").account, UNKNOWN)
+        state["profile"]["info_cache"]["Profile 9"] = {"user_name": "ann@acme.test"}
+        command = r.parse("open gmail in ann acme")
+        self.assertEqual(command.account, "ann@acme.test")
+        self.assertTrue(r.run(command)[0])
+        self.assertIn("--profile-directory=Profile 9", launch.call_args.args[0])
 
     def test_account_without_a_chrome_profile_fails(self):
         launch = Mock()

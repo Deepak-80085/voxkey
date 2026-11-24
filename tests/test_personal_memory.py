@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -73,6 +74,15 @@ class PersonalMemoryTests(unittest.TestCase):
                              [{"name": "acme BOARD", "url": "http://board.example.com/new"}])
             memory.delete_site("ACME board")
             self.assertEqual(PersonalMemory(path).list_sites(), [])
+
+    def test_hand_edited_sites_with_a_bad_address_are_dropped_on_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory.json"
+            path.write_text(json.dumps({"sites": [
+                {"name": "evil", "url": "--disable-web-security"},
+                {"name": "no url"}, "junk",
+                {"name": "ok", "url": "https://example.com"}]}), encoding="utf-8")
+            self.assertEqual(PersonalMemory(path).list_sites(), [{"name": "ok", "url": "https://example.com"}])
 
     def test_bad_website_is_rejected_and_nothing_saved(self):
         with tempfile.TemporaryDirectory() as directory:
