@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import sys
 import threading
+import winsound
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,6 +69,12 @@ class SoundPlayer:
 
     def play(self, cue: str | None) -> None:
         if not cue or not self.enabled:
+            return
+        if cue == "error":  # no MP3 for this cue: system error beep
+            try:
+                winsound.MessageBeep(winsound.MB_ICONHAND)
+            except Exception:
+                pass
             return
         filename = self._SOUND_FILES.get(cue)
         if not filename or sys.platform != "win32":

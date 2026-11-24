@@ -27,6 +27,18 @@ class VoxKeyUiTests(unittest.TestCase):
         self.assertTrue((sounds.asset_dir / "starrt.mp3").is_file())
         self.assertTrue((sounds.asset_dir / "end.mp3").is_file())
 
+    def test_error_cue_has_no_mp3_but_still_plays_a_system_beep(self):
+        import winsound
+        from unittest.mock import patch
+        from voxkey_ui import SoundPlayer
+
+        with patch("voxkey_ui.winsound.MessageBeep") as beep:
+            SoundPlayer().play("error")
+        beep.assert_called_once_with(winsound.MB_ICONHAND)
+        with patch("voxkey_ui.winsound.MessageBeep") as beep:
+            SoundPlayer(enabled=False).play("error")
+        beep.assert_not_called()
+
     def test_release_and_all_post_release_events_hide_the_hud_but_keep_sounds(self):
         from voxkey_ui import SoundCue, hud_view_for
 

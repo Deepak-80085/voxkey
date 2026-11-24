@@ -168,11 +168,11 @@ class SpeechModelManager:
             return status
         return self.health_check(force_download=True)
 
-    def transcribe(self, audio_path: Path, beam_size: int = 1) -> str:
+    def transcribe(self, audio_path: Path, beam_size: int = 1, command_terms: bool = False) -> str:
         if self.model is None:
             raise RuntimeError("Speech model needs repair")
         try:
-            return self._transcribe_once(audio_path, beam_size)
+            return self._transcribe_once(audio_path, beam_size, command_terms)
         except Exception:
             if self.device != "cuda":
                 raise
@@ -180,16 +180,17 @@ class SpeechModelManager:
             model_dir = self._model_directory()
             self.model = self._load(model_dir, "cpu", "int8")
             self.device = "cpu"
-            return self._transcribe_once(audio_path, beam_size)
+            return self._transcribe_once(audio_path, beam_size, command_terms)
 
-    def _transcribe_once(self, audio_path: Path, beam_size: int) -> str:
+    def _transcribe_once(self, audio_path: Path, beam_size: int, command_terms: bool = False) -> str:
         self.logger.info("Transcribing with device=%s", self.device)
+        words = self.vocabulary_provider()
         segments, _ = self.model.transcribe(
             _read_recording(audio_path),
             language="en",
             beam_size=beam_size,
             vad_filter=True,
             condition_on_previous_text=False,
-            initial_prompt=build_initial_prompt(with_command_terms(self.vocabulary_provider())),
+            initial_prompt=build_initial_prompt(with_command_terms(words) if command_terms else words),
         )
         return " ".join(segment.text for segment in segments).strip()

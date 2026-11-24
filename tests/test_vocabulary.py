@@ -1,6 +1,6 @@
 import unittest
 
-from vocabulary import build_initial_prompt, normalize_vocabulary, with_command_terms
+from vocabulary import build_initial_prompt, normalize_vocabulary, with_command_terms, COMMAND_TERMS
 
 
 class VocabularyTests(unittest.TestCase):
@@ -26,7 +26,9 @@ class VocabularyTests(unittest.TestCase):
         words = with_command_terms(["Zudio"])
         self.assertEqual(words[0], "Zudio")
         self.assertIn("Slack", words)
-        self.assertEqual(len(normalize_vocabulary(with_command_terms([f"T{i}" for i in range(100)]))), 100)
+        full = normalize_vocabulary(with_command_terms([f"T{i}" for i in range(100)]))
+        self.assertEqual(len(full), 100)
+        self.assertEqual(full[-len(COMMAND_TERMS):], list(COMMAND_TERMS))  # user words are trimmed, not command terms
         self.assertEqual(normalize_vocabulary(with_command_terms(["slack"])).count("slack"), 1)
 
 

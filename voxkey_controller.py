@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Callable
 from voxkey_events import EventBus, UiEvent
 from voxkey_runtime import AppState
 from writing_model import WritingModelUnavailable
+
+_OPEN = re.compile(r"\W*open\b", re.IGNORECASE)
 
 
 class VoxKeyController:
@@ -141,7 +144,21 @@ class VoxKeyController:
                     if self.logger:
                         self.logger.exception("Local correction memory unavailable")
 
-            outcome = self._run_command(transcript, transcribe_finished) if self.commands else None
+            outcome = None
+            if self.commands and _OPEN.match(transcript):
+                # Only "open ..." sentences get a second pass with the command names in the prompt.
+                second_started = time.perf_counter()
+                second = self.speech.transcribe(audio_path, command_terms=True)
+                if self.memory:
+                    try:
+                        second = self.memory.correct(second, app)
+                    except Exception:
+                        if self.logger:
+                            self.logger.exception("Local correction memory unavailable")
+                if self.logger:
+                    self.logger.info("Command second pass; elapsed_ms=%d",
+                                     round((time.perf_counter() - second_started) * 1000))
+                outcome = self._run_command(second, transcribe_finished)
             if outcome is not None:
                 self._set_state(AppState.READY)
                 return outcome

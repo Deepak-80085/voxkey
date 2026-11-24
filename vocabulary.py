@@ -8,8 +8,8 @@ COMMAND_TERMS = ("Slack", "T3 Code", "ChatGPT", "WhatsApp", "YouTube Music", "Gi
 
 
 def with_command_terms(words: Iterable[str]) -> list[str]:
-    """User words first, then the spoken-command names; the saved settings are not changed."""
-    return [*words, *COMMAND_TERMS]
+    """User words first, then the spoken-command names (user words are trimmed to fit the cap)."""
+    return [*normalize_vocabulary(words)[:MAX_VOCABULARY_ENTRIES - len(COMMAND_TERMS)], *COMMAND_TERMS]
 
 
 def normalize_vocabulary(words: Iterable[str]) -> list[str]:

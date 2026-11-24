@@ -64,6 +64,25 @@ class SpeechModelTests(unittest.TestCase):
 
         logger.info.assert_any_call("Transcribing with device=%s", "cuda")
 
+    def _prompt(self, vocabulary, **kwargs):
+        model = Mock()
+        model.transcribe.return_value = ([], None)
+        manager = SpeechModelManager(self.runtime, model_loader=Mock(return_value=model),
+                                     vocabulary_provider=lambda: vocabulary)
+        manager.model, manager.device = model, "cpu"
+        manager.transcribe(Path("sample.wav"), **kwargs)
+        return model.transcribe.call_args.kwargs["initial_prompt"]
+
+    def test_normal_dictation_prompt_is_exactly_the_user_vocabulary_prompt(self):
+        from vocabulary import build_initial_prompt
+        self.assertEqual(self._prompt(["Zudio", "VoxKey"]), build_initial_prompt(["Zudio", "VoxKey"]))
+        self.assertEqual(self._prompt([]), "")
+
+    def test_command_pass_prompt_adds_command_terms_after_user_words(self):
+        prompt = self._prompt(["Zudio"], command_terms=True)
+        self.assertTrue(prompt.startswith("English dictation. Terms: Zudio, "))
+        self.assertIn("Slack", prompt)
+
     def test_gpu_load_failure_retries_same_small_en_model_on_cpu(self):
         cpu_model = Mock()
         loader = Mock(side_effect=[RuntimeError("GPU unavailable"), cpu_model])

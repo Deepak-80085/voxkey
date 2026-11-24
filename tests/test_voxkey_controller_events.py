@@ -1,6 +1,6 @@
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 from voxkey_controller import VoxKeyController
 from voxkey_events import EventBus
@@ -112,6 +112,41 @@ class CommandControllerTests(unittest.TestCase):
         controller, paste, _, commands, _, _ = self._make(None, ticks=(1.0, 1.2, 1.4, 1.5))
         commands.parse.side_effect = RuntimeError("boom")
         self.assertTrue(controller.process_audio(Path("s.wav")))
+        paste.assert_called_once()
+
+
+class CommandSecondPassTests(unittest.TestCase):
+    def _make(self, transcripts, parsed):
+        speech, writer, paste, events = Mock(), Mock(), Mock(return_value=True), EventBus()
+        speech.health_check.return_value = Mock(ready=True, reason=None)
+        speech.transcribe.side_effect = transcripts
+        writer.polish.side_effect = lambda text, **kw: text
+        commands = Mock()
+        commands.parse.return_value = parsed
+        commands.run.return_value = (True, "Opened Slack")
+        controller = VoxKeyController(speech, writer, paste, events=events, commands=commands)
+        controller.start()
+        return controller, speech, writer, paste, commands
+
+    def test_normal_dictation_is_transcribed_once_with_no_command_terms(self):
+        controller, speech, _, paste, commands = self._make(["Hello good morning."], None)
+        controller.process_audio(Path("s.wav"))
+        speech.transcribe.assert_called_once_with(Path("s.wav"))
+        commands.parse.assert_not_called()
+        paste.assert_called_once()
+
+    def test_open_sentence_is_transcribed_again_with_command_terms_and_second_text_is_parsed(self):
+        controller, speech, _, paste, commands = self._make(["  Open, slack.", "Open Slack."], "CMD")
+        controller.process_audio(Path("s.wav"))
+        self.assertEqual(speech.transcribe.call_args_list,
+                         [call(Path("s.wav")), call(Path("s.wav"), command_terms=True)])
+        commands.parse.assert_called_once_with("Open Slack.")
+        paste.assert_not_called()
+
+    def test_second_text_not_a_command_types_the_first_transcript(self):
+        controller, _, writer, paste, commands = self._make(["Open the door.", "Open the store."], None)
+        controller.process_audio(Path("s.wav"))
+        writer.polish.assert_called_once_with("Open the door.")
         paste.assert_called_once()
 
 
