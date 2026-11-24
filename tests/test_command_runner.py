@@ -407,11 +407,11 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual((ok, detail), (False, "Couldn't open Terminal"))
 
     def test_folder_words_find_one_folder_ignoring_case_and_underscores(self):
-        self.mkdirs("sudo/clients/bopal/AI_interview", "sudo/other/Zed")
+        self.mkdirs("work/clients/acme/AI_interview", "sudo/other/Zed")
         ok, _ = self.run_words("clients", "ai interview", run_claude=True)
         self.assertTrue(ok)
         self.launch.assert_called_once_with(
-            [command_runner.WT, "-w", "new", "-d", str(self.root / "sudo/clients/bopal/AI_interview"), "cmd", "/k", "claude"])
+            [command_runner.WT, "-w", "new", "-d", str(self.root / "work/clients/acme/AI_interview"), "cmd", "/k", "claude"])
 
     def test_last_word_must_equal_the_folder_name_not_just_appear_in_it(self):
         self.mkdirs("clients/AI_interview_old")
@@ -492,7 +492,7 @@ class TerminalTests(unittest.TestCase):
                 self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "work" / name)])
 
     def test_phrase_falls_back_to_hint_words(self):
-        self.mkdirs("clients/bopal/AI_interview")
+        self.mkdirs("clients/acme/AI_interview")
         ok, _ = self.run_words("clients", "ai interview", phrase="clients in ai interview")
         self.assertTrue(ok)
 
