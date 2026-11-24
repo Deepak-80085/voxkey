@@ -25,6 +25,7 @@ class VoxKeyController:
         memory=None,
         edit_watcher=None,
         prepare_runtime: Callable[[Callable[[str], None]], None] | None = None,
+        commands=None,
     ):
         self.speech = speech
         self.logger = logger
@@ -36,6 +37,7 @@ class VoxKeyController:
         self.memory = memory
         self.edit_watcher = edit_watcher
         self.prepare_runtime = prepare_runtime
+        self.commands = commands
         self.state = AppState.STARTING
         self.reason = None
         self._validation_lock = threading.Lock()
@@ -85,6 +87,28 @@ class VoxKeyController:
         finally:
             self._validation_lock.release()
 
+    def _run_command(self, transcript: str, since: float) -> bool | None:
+        """None: not a command. Otherwise whether it worked; either way nothing is pasted."""
+        try:
+            command = self.commands.parse(transcript)
+        except Exception:
+            if self.logger:
+                self.logger.exception("Command parsing failed; typing the text instead")
+            return None
+        if command is None:
+            return None
+        try:
+            ok, detail = self.commands.run(command)
+        except Exception as exc:
+            ok, detail = False, str(exc) or "Command failed"
+            if self.logger:
+                self.logger.exception("Command failed")
+        command_ms = round((self.clock() - since) * 1000)
+        if self.logger:
+            self.logger.info("Command completed; success=%s; command_ms=%d", ok, command_ms)
+        self._emit("command_succeeded" if ok else "command_failed", AppState.READY, detail, command_ms)
+        return ok
+
     def can_dictate(self) -> bool:
         return self.state is AppState.READY
 
@@ -116,6 +140,11 @@ class VoxKeyController:
                 except Exception:
                     if self.logger:
                         self.logger.exception("Local correction memory unavailable")
+
+            outcome = self._run_command(transcript, transcribe_finished) if self.commands else None
+            if outcome is not None:
+                self._set_state(AppState.READY)
+                return outcome
 
             self._emit("polishing", AppState.POLISHING)
             self._set_state(AppState.POLISHING)

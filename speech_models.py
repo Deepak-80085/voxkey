@@ -14,7 +14,7 @@ from faster_whisper import WhisperModel
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import tqdm as HuggingFaceTqdm
 
-from vocabulary import build_initial_prompt
+from vocabulary import build_initial_prompt, with_command_terms
 from voxkey_runtime import VoxKeyRuntime
 
 MODEL_NAME = "small.en"
@@ -190,6 +190,6 @@ class SpeechModelManager:
             beam_size=beam_size,
             vad_filter=True,
             condition_on_previous_text=False,
-            initial_prompt=build_initial_prompt(self.vocabulary_provider()),
+            initial_prompt=build_initial_prompt(with_command_terms(self.vocabulary_provider())),
         )
         return " ".join(segment.text for segment in segments).strip()

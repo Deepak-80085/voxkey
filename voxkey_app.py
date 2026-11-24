@@ -18,6 +18,7 @@ import pyperclip
 import sounddevice as sd
 from pynput import keyboard
 
+from command_runner import CommandRunner, known_from, read_chrome_state
 from ollama_runtime import ManagedOllamaRuntime
 from personal_memory import PersonalMemory
 from edit_learning import EditLearningWatcher
@@ -415,9 +416,12 @@ def main() -> None:
         get_foreground_window_handle, logger, events,
         preferred=lambda: runtime.load_settings().get("vocabulary", []),
     )
+    commands = CommandRunner(logger, known_from(settings, read_chrome_state()))
+    commands.warm()
     controller = VoxKeyController(
         speech, writer, paste=paste_polished_text, logger=logger, events=events,
         memory=memory, edit_watcher=edit_watcher, prepare_runtime=cuda_runtime.ensure_ready,
+        commands=commands,
     )
     threading.Thread(target=controller.start, daemon=True).start()
     service = HoldToDictateService(controller, runtime, logger=logger, events=events)

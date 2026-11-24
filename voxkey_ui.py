@@ -51,6 +51,8 @@ class SoundCue:
             "paste_succeeded": "complete",
             "pipeline_failed": "error",
             "capture_failed": "error",
+            "command_succeeded": "complete",
+            "command_failed": "error",
         }.get(event.kind)
 
 
@@ -629,6 +631,8 @@ class VoxKeyShell:
             self.hud.show_event(event)
         cue = SoundCue.for_event(event)
         self.sounds.play(cue)
+        if event.kind == "command_failed":
+            self.tray.showMessage("VoxKey", event.detail or "Command failed", QSystemTrayIcon.MessageIcon.Warning, 4000)
         if event.kind == "state_changed" and event.state:
             detail = event.detail or {
                 AppState.VALIDATING: "Preparing local models. First launch may take a few minutes.",

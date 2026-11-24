@@ -3,6 +3,13 @@
 from collections.abc import Iterable
 
 MAX_VOCABULARY_ENTRIES = 100
+COMMAND_TERMS = ("Slack", "T3 Code", "ChatGPT", "WhatsApp", "YouTube Music", "GitHub", "Google Meet",
+                 "Gmail", "Claude Code", "Jigsaw")
+
+
+def with_command_terms(words: Iterable[str]) -> list[str]:
+    """User words first, then the spoken-command names; the saved settings are not changed."""
+    return [*words, *COMMAND_TERMS]
 
 
 def normalize_vocabulary(words: Iterable[str]) -> list[str]:
