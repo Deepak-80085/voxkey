@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- Add voice commands: hold the hotkey and say "open ..." to open apps (Slack, T3 Code, Claude, ChatGPT, WhatsApp), search a channel, chat, or thread in Slack, WhatsApp, or T3 Code, and open Terminal in a drive or a folder found by name, optionally running Claude Code. Anything else types as before. Searches type only into a search box confirmed through UI Automation. Websites and Chrome profiles are not supported yet.
+- Add voice commands: hold the hotkey and say "open ..." to open apps (Slack, T3 Code, Claude, ChatGPT, WhatsApp), search a channel, chat, or thread in Slack, WhatsApp, or T3 Code, and open Terminal in a drive or a folder found by name, optionally running Claude Code. Anything else types as before. Searches type only into a search box confirmed through UI Automation. Open built-in websites (YouTube, YouTube Music, GitHub, Gmail, Google Meet) or websites you save on **Personal memory → Websites** in a new Chrome window, in the Chrome profile picked by an account phrase ("my account", "Sam work account") or by `default_account`; profiles are found from Chrome's `Local State`. Settings, saved websites, and Chrome profiles are read on every command.
 
 ### Changed
 - Remove the local LLM writer: it changed words in 14/14 benchmark samples and was always discarded, so formatting is now rule-based only. Startup drops from 28-83 s to about 4 s and about 1 GB RAM plus 1 GB VRAM is freed; Ollama is kept only as the CUDA library source for Whisper.

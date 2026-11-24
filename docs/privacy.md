@@ -27,7 +27,7 @@ Normal dictation does not require external network access. First-run setup and r
 
 Voice commands stay local too. VoxKey does the following:
 
-- At startup, reads Chrome's `Local State` file (read only) to learn the email addresses of your Chrome profiles. It does not read cookies, passwords, or history.
+- On every voice command, reads Chrome's `Local State` file (read only) and uses only each profile's `user_name` (its signed-in email) to pick a profile. It does not read cookies, passwords, or history. To open a website, it starts Chrome with `--profile-directory=<profile folder>` and the web address. Saved websites are stored on this PC in `personal-memory.json`.
 - At startup, lists your Start-menu apps. When you say "open" plus a name, it launches the one you named.
 - At startup, builds a folder-name index of your non-system fixed drives (or the `folder_roots` you set). The index refreshes every 15 minutes. It is kept in memory only and is never saved or sent.
 - Send keystrokes only into a search box confirmed through Windows UI Automation, in the exact window it opened. It never types into message boxes.
