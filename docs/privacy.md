@@ -14,7 +14,6 @@ All mutable data belongs under `%LOCALAPPDATA%\VoxKey`:
 - `personal-memory.json`: correction rules, up to 20 suggested edits, snippets, app styles, and the last 50 successfully pasted texts. The Personal memory screen can delete rules, suggested edits, snippets, styles, or all saved dictation history.
 - `voxkey.log`: lifecycle, error, device, and timing diagnostics. It is rotated locally.
 - `models\speech` and `models\speech-distil-large-v3`: VoxKey-owned local speech models.
-- `models\writer`: the VoxKey-owned writing model.
 - `runtime\ollama`: the pinned, checksum-verified Ollama download, kept only for its GPU libraries (Ollama itself is not run).
 - `last-dictation.wav`: the most recent capture retained for troubleshooting. It is overwritten by the next capture. You can delete it at any time.
 
