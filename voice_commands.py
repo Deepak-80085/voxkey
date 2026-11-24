@@ -23,6 +23,7 @@ _KEYWORDS = {"channel", "chat", "thread"}
 _FILLER = {"the", "a", "an", "app", "application", "desktop"}
 _ACCOUNT_FILLER = {"in", "on", "at", "of", "and", "again", "account", "profile", "chrome", "open"}
 _FOLDER_BREAK = {"in", "on", "at", "to", "and", "folder", "directory"}
+_PHRASE_EDGE = {"in", "on", "at", "and"}
 _FOLDER_FILLER = _FOLDER_BREAK | {"open", "the", "a", "my", "terminal", "claude", "code"}
 
 
@@ -48,6 +49,7 @@ class Command:
     account: str | None = None  # email, AMBIGUOUS, UNKNOWN, or None (no account spoken)
     drive: str = ""
     words: tuple[str, ...] = ()
+    phrase: str = field(default="", compare=False)  # all folder words joined, to try as one name ("to do" -> todo)
     run_claude: bool = False
 
 
@@ -98,7 +100,7 @@ def _account(words: list[str], known: Known) -> str | None:
 
 
 def _terminal(text: str, run: bool) -> Command:
-    drive, words = "", []
+    drive, words, phrases = "", [], []
     for part in re.split(r"[,;.]", text):
         tokens = _tokens(part)
         if "run" in tokens:
@@ -110,6 +112,12 @@ def _terminal(text: str, run: bool) -> Command:
                 tokens[i - 1:i + 1] = ["", ""]
             elif re.fullmatch(r"[a-z]drive", token):
                 drive, tokens[i] = token[0], ""
+        spoken = [t for t in tokens if t and t not in ("folder", "directory")]
+        while spoken and (spoken[0] in _PHRASE_EDGE or spoken[0] in _FOLDER_FILLER - _FOLDER_BREAK):
+            spoken.pop(0)
+        while spoken and spoken[-1] in _PHRASE_EDGE:
+            spoken.pop()
+        phrases += spoken
         phrase = [[]]  # "clients folder in AI interview" (no commas heard) is two folder words
         for token in tokens:
             if token in _FOLDER_BREAK:
@@ -117,7 +125,7 @@ def _terminal(text: str, run: bool) -> Command:
             elif token and token not in _FOLDER_FILLER:
                 phrase[-1].append(token)
         words += [" ".join(p) for p in phrase if p]
-    return Command("terminal", "Terminal", drive=drive, words=tuple(words), run_claude=run)
+    return Command("terminal", "Terminal", drive=drive, words=tuple(words), phrase=" ".join(phrases), run_claude=run)
 
 
 _CONNECT = {"in", "on", "at", ","}

@@ -27,6 +27,7 @@ NOTHING_TYPED = "Search box not found \u2014 nothing typed"
 NOTHING_SENT = "Search box not found \u2014 nothing sent"
 
 
+REFRESH_S = 15 * 60
 SKIP_DIRS = {"node_modules", ".git", "$recycle.bin", "system volume information", "__pycache__",
              ".venv", "venv", "dist", "build", ".next"}
 
@@ -35,21 +36,81 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.casefold())
 
 
-def find_folders(roots, words) -> list[Path]:
-    """Folders whose normalized name equals the last word and whose path holds the earlier words in order."""
-    *hints, last = [_norm(w) for w in words]
-    found: list[Path] = []
-    # ponytail: full walk each time (E:\ 1.2 s, D:\ 8 s measured); upgrade: a background folder index.
-    for root in roots:
-        for here, dirs, _ in os.walk(root):
-            dirs[:] = [d for d in dirs if d.casefold() not in SKIP_DIRS and not d.startswith(".")]
-            for d in dirs:
-                if _norm(d) != last:
+class FolderIndex:
+    """Folder names -> paths, built in the background and refreshed every REFRESH_S. A command only reads it."""
+
+    def __init__(self, roots, logger=None, refresh_s=REFRESH_S):
+        self._roots, self._logger, self._refresh_s = roots, logger, refresh_s
+        self._names: dict[str, list[str]] = {}
+        self.ready = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+
+    def start(self) -> None:
+        with self._lock:
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._loop, daemon=True)
+                self._thread.start()
+
+    def _loop(self) -> None:
+        while True:
+            try:
+                self.build()
+            except Exception:
+                if self._logger:
+                    self._logger.exception("Folder index build failed")
+            time.sleep(self._refresh_s)
+
+    def build(self) -> None:
+        started, names = time.monotonic(), {}
+        for root in self._roots():
+            stack = [str(root)]
+            while stack:
+                try:
+                    with os.scandir(stack.pop()) as entries:
+                        for e in entries:
+                            if not e.is_dir(follow_symlinks=False) or e.is_junction():
+                                continue
+                            if key := _norm(e.name):
+                                names.setdefault(key, []).append(e.path)
+                            # a skipped or dot folder's own name stays findable; we just don't go inside
+                            if e.name.casefold() not in SKIP_DIRS and not e.name.startswith("."):
+                                stack.append(e.path)
+                except OSError:
                     continue
-                parts = iter(_norm(p) for p in Path(here).parts[1:])
-                if all(h in parts for h in hints):  # `in` on an iterator keeps the order
-                    found.append(Path(here, d))
-    return found
+        self._names = names
+        self.ready.set()
+        if self._logger:
+            self._logger.info("Folder index built; ms=%d; entries=%d",
+                              (time.monotonic() - started) * 1000, sum(map(len, names.values())))
+
+    def find(self, words, under=None) -> list[Path]:
+        """Folders whose normalized name equals the last word and whose parent path holds the earlier words in order."""
+        *hints, last = [_norm(w) for w in words]
+        prefix = os.path.normcase(str(under)).rstrip("\\/") if under else None
+        found = []
+        for path in self._names.get(last, ()):
+            if prefix and not os.path.normcase(path).startswith(prefix + os.sep):
+                continue
+            parts = iter(_norm(p) for p in Path(path).parent.parts[1:])
+            if all(h in parts for h in hints):  # `in` on an iterator keeps the order
+                found.append(Path(path))
+        return found
+
+
+def fixed_drives() -> list[Path]:
+    import ctypes
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    roots = [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+    return [Path(r) for r in roots if ctypes.windll.kernel32.GetDriveTypeW(r) == 3]  # 3 = fixed disk
+
+
+def default_index_roots(folder_roots, drive_root, drives=fixed_drives, system_drive=None) -> list[Path]:
+    """The folder_roots setting if set, else every fixed drive except the system drive."""
+    if folder_roots:
+        return [drive_root(str(r)[:1]) for r in folder_roots if str(r)[:1].isalpha()]
+    system = (system_drive or os.environ.get("SystemDrive", "C:")).upper()
+    return [d for d in drives() if str(d)[:2].upper() != system]
 
 
 def drive_root(letter: str) -> Path:
@@ -136,7 +197,7 @@ class CommandRunner:
     def __init__(self, logger=None, known: Known | None = None, start_apps=get_start_apps,
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
                  keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic,
-                 new_window=focus_new, drive_root=drive_root, folder_roots=lambda: ()):
+                 new_window=focus_new, drive_root=drive_root, folder_roots=lambda: (), index_roots=None):
         self.logger = logger
         self.known = known or Known()
         self._start_apps = start_apps
@@ -152,6 +213,8 @@ class CommandRunner:
         self._new_window = new_window
         self._drive_root = drive_root
         self._folder_roots = folder_roots
+        self._index = FolderIndex(
+            index_roots or (lambda: default_index_roots(self._folder_roots(), self._drive_root)), logger)
         self.focused_at: float | None = None  # clock time the app came to the front, for action_ms
         self._apps: list[dict] = []
         self._ready = threading.Event()
@@ -159,7 +222,8 @@ class CommandRunner:
         self._lock = threading.Lock()  # guards starting the loader only; never held while PowerShell runs
 
     def warm(self) -> None:
-        """Read the Start apps list in the background (retrying if it fails); a command never waits long for it."""
+        """Read the Start apps list and index folders in the background; a command never waits long for them."""
+        self._index.start()
         with self._lock:
             if self._loader is None:
                 self._loader = threading.Thread(target=self._load_until_ready, daemon=True)
@@ -270,19 +334,19 @@ class CommandRunner:
 
     def _terminal(self, command: Command) -> tuple[bool, str]:
         self.focused_at = None
+        under = None
         if command.drive:
-            letters = [command.drive]
-        else:
-            letters = [str(r)[:1] for r in self._folder_roots() or () if str(r)[:1].isalpha()]
-        if not letters:
-            return False, "Say which drive"
-        roots = [self._drive_root(letter) for letter in letters]
-        for letter, root in zip(letters, roots):
-            if not root.is_dir():
-                return False, f"Drive {letter.upper()}: not found"
+            under = self._drive_root(command.drive)
+            if not under.is_dir():
+                return False, f"Drive {command.drive.upper()}: not found"
         if command.words:
+            self._index.start()
+            if not self._index.ready.wait(self._wait):
+                return False, "Still indexing folders — try again in a moment"
             started = self._clock()
-            matches = sorted(set(find_folders(roots, command.words)))
+            matches = self._index.find((command.phrase,), under) if command.phrase else []
+            matches = matches or self._index.find(command.words, under)
+            matches = sorted(set(matches))
             if self.logger:
                 self.logger.info("Folder search; ms=%d; matches=%d", (self._clock() - started) * 1000, len(matches))
             if not matches:
@@ -290,10 +354,15 @@ class CommandRunner:
             if len(matches) > 1:
                 return False, "Several folders match: " + "; ".join(str(m) for m in matches[:3])
             root = matches[0]
-        elif len(roots) == 1:
-            root = roots[0]
+        elif under:
+            root = under
         else:
-            return False, "Say which drive"
+            roots = default_index_roots(self._folder_roots(), self._drive_root, lambda: [])
+            if len(roots) != 1:
+                return False, "Say which drive"
+            root = roots[0]
+        if ";" in str(root):  # wt.exe splits its command line at ';'
+            return False, "Folder name has ';' — can't open in Terminal"
         # Only a directory we resolved goes on the command line, never spoken text.
         argv = [WT, "-w", "new", "-d", str(root)] + (["cmd", "/k", "claude"] if command.run_claude else [])
 

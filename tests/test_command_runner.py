@@ -354,22 +354,24 @@ class TerminalTests(unittest.TestCase):
         self.launch = Mock()
         self.focus_calls = []
 
-    def make(self, folder_roots=(), focus_ok=True):
+    def make(self, folder_roots=(), focus_ok=True, index_roots=None, wait=0.5):
         def new_window(name, start):
             start()
             self.focus_calls.append(name)
             return 77 if focus_ok else None
         drives = {"t": self.root}
         return CommandRunner(Mock(), launch=self.launch, new_window=new_window,
-                             folder_roots=lambda: folder_roots,
+                             folder_roots=lambda: folder_roots, wait=wait,
+                             index_roots=index_roots or (lambda: [self.root]),
                              drive_root=lambda letter: drives.get(letter, Path(f"{letter}:/not-here")))
 
     def mkdirs(self, *paths):
         for path in paths:
             (self.root / path).mkdir(parents=True)
 
-    def run_words(self, *words, drive="t", run_claude=False, **kw):
-        return self.make(**kw).run(Command("terminal", "Terminal", drive=drive, words=words, run_claude=run_claude))
+    def run_words(self, *words, drive="t", run_claude=False, phrase="", **kw):
+        return self.make(**kw).run(
+            Command("terminal", "Terminal", drive=drive, words=words, phrase=phrase, run_claude=run_claude))
 
     def test_drive_only_opens_terminal_there_with_an_argv_list(self):
         ok, detail = self.make().run(Command("terminal", "Terminal", drive="t"))
@@ -390,8 +392,8 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual((ok, detail), (False, "Drive Q: not found"))
         self.launch.assert_not_called()
 
-    def test_no_drive_and_no_roots_asks_which_drive(self):
-        ok, detail = self.make().run(Command("terminal", "Terminal", words=("zebra",)))
+    def test_no_drive_and_no_words_and_no_roots_asks_which_drive(self):
+        ok, detail = self.make().run(Command("terminal", "Terminal"))
         self.assertEqual((ok, detail), (False, "Say which drive"))
         self.launch.assert_not_called()
 
@@ -436,11 +438,69 @@ class TerminalTests(unittest.TestCase):
         self.run_words("app")
         self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "real/app")])
 
-    def test_no_drive_searches_the_folder_roots_setting(self):
+    def test_no_drive_searches_every_index_root(self):
         self.mkdirs("proj/voxkey")
-        ok, _ = self.run_words("voxkey", drive="", folder_roots=["t"])
+        ok, _ = self.run_words("voxkey", drive="")
         self.assertTrue(ok)
         self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "proj/voxkey")])
+
+    def test_default_roots_use_the_setting_else_fixed_drives_without_the_system_drive(self):
+        drive = lambda letter: Path(f"{letter.upper()}:\\")
+        fixed = lambda: [Path("C:\\"), Path("D:\\"), Path("E:\\")]
+        self.assertEqual(command_runner.default_index_roots(["e"], drive, fixed, "C:"), [Path("E:\\")])
+        self.assertEqual(command_runner.default_index_roots([], drive, fixed, "C:"), [Path("D:\\"), Path("E:\\")])
+
+    def test_spoken_drive_limits_results_to_that_drive(self):
+        other = Path(self.root, "other")
+        other.mkdir()
+        self.mkdirs("one/voxkey")
+        (other / "voxkey").mkdir()
+        runner_ = self.make(index_roots=lambda: [self.root / "one", other])
+        runner_._drive_root = lambda letter: other
+        ok, detail = runner_.run(Command("terminal", "Terminal", drive="t", words=("voxkey",)))
+        self.assertTrue(ok)
+        self.assertIn(str(other / "voxkey"), detail)
+
+    def test_command_before_the_index_is_ready_waits_then_fails(self):
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        self.mkdirs("voxkey")
+        def slow_roots():
+            gate.wait(5)
+            return [self.root]
+        started = time.monotonic()
+        ok, detail = self.make(index_roots=slow_roots, wait=0.1).run(
+            Command("terminal", "Terminal", drive="t", words=("voxkey",)))
+        self.assertEqual((ok, detail), (False, "Still indexing folders — try again in a moment"))
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.launch.assert_not_called()
+
+    def test_index_keeps_a_skipped_folders_own_name_but_does_not_descend(self):
+        self.mkdirs("proj/build", "proj/build/inner", "proj/.hidden")
+        self.assertTrue(self.run_words("build")[0])
+        self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "proj/build")])
+        self.assertEqual(self.run_words("inner")[1], "Folder not found")
+        self.assertTrue(self.run_words("hidden")[0])
+
+    def test_whole_phrase_is_tried_as_one_folder_name(self):
+        self.mkdirs("work/todo", "work/designandbuild", "work/qa")
+        for phrase, words, name in [("to do", ("do",), "todo"), ("design and build", ("design", "build"), "designandbuild"),
+                                    ("q a", ("q",), "qa")]:
+            with self.subTest(phrase):
+                self.launch.reset_mock()
+                self.assertTrue(self.run_words(*words, phrase=phrase)[0])
+                self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "work" / name)])
+
+    def test_phrase_falls_back_to_hint_words(self):
+        self.mkdirs("clients/bopal/AI_interview")
+        ok, _ = self.run_words("clients", "ai interview", phrase="clients in ai interview")
+        self.assertTrue(ok)
+
+    def test_a_path_with_a_semicolon_is_never_passed_to_wt(self):
+        self.mkdirs("a;b/app")
+        ok, detail = self.run_words("app")
+        self.assertEqual((ok, detail), (False, "Folder name has ';' — can't open in Terminal"))
+        self.launch.assert_not_called()
 
     def test_search_time_is_logged(self):
         self.mkdirs("proj/voxkey")

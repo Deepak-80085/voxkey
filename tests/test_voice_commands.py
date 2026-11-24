@@ -66,6 +66,19 @@ class VoiceCommandTests(unittest.TestCase):
             with self.subTest(text):
                 self.assertEqual(parse(text, KNOWN), expected)
 
+    def test_terminal_keeps_the_joined_phrase_for_one_word_folder_names(self):
+        cases = {
+            "Open the terminal in E drive, to-do folder.": ("to do", ("do",)),
+            "Open the terminal in E drive, design and build folder.": ("design and build", ("design", "build")),
+            "Open the terminal in E drive, Q&A folder.": ("q a", ("q",)),
+            "Open Claude Code in VoxKey.": ("voxkey", ("voxkey",)),
+            "Open the terminal in E drive, build folder.": ("build", ("build",)),
+        }
+        for text, (phrase, words) in cases.items():
+            with self.subTest(text):
+                command = parse(text, KNOWN)
+                self.assertEqual((command.phrase, command.words), (phrase, words))
+
     def test_close_name_matches_but_near_miss_does_not(self):
         self.assertEqual(parse("open slab", KNOWN), Command("app", "Slack"))
         self.assertIsNone(parse("open slate", KNOWN))
