@@ -117,5 +117,79 @@ class CommandRunnerTests(unittest.TestCase):
         self.assertEqual(known_from({"orgs": "bad", "workspaces": 3}, {}).orgs, {})
 
 
+class FakeKeys:
+    """Records every key event; `lose_after` flips the foreground away after that many events."""
+    def __init__(self, front, lose_after=None):
+        self.events, self.front, self.lose_after = [], front, lose_after
+
+    def _log(self, event):
+        self.events.append(event)
+        if self.lose_after is not None and len(self.events) >= self.lose_after:
+            self.front[0] = False
+
+    def chord(self, *names):
+        self._log(("chord",) + names)
+
+    def type_char(self, char):
+        self._log(("type", char))
+
+    def tap(self, name):
+        self._log(("tap", name))
+
+
+class SearchTests(unittest.TestCase):
+    def _run(self, command, lose_after=None, focus_ok=True, front_at_start=True):
+        front = [front_at_start]
+        keys = FakeKeys(front, lose_after)
+        r = CommandRunner(Mock(), start_apps=lambda: APPS + [{"Name": "WhatsApp", "AppID": "W"},
+                                                 {"Name": "T3 Code (Nightly)", "AppID": "T"}],
+                          launch=Mock(), focus=Mock(return_value=focus_ok), keys=keys,
+                          in_front=lambda name: front[0], pause=lambda s: None)
+        return r.run(command), keys.events
+
+    def _typed(self, events):
+        return "".join(e[1] for e in events if e[0] == "type")
+
+    def test_slack_sends_ctrl_k_then_the_name_then_enter(self):
+        (ok, detail), events = self._run(Command("search", "Slack", target="hirefast"))
+        self.assertTrue(ok)
+        self.assertEqual(events[0], ("chord", "ctrl", "k"))
+        self.assertEqual(self._typed(events), "hirefast")
+        self.assertEqual(events[-1], ("tap", "enter"))
+
+    def test_t3_uses_ctrl_k(self):
+        _, events = self._run(Command("search", "T3 Code", target="voice command"))
+        self.assertEqual(events[0], ("chord", "ctrl", "k"))
+        self.assertEqual(self._typed(events), "voice command")
+
+    def test_whatsapp_uses_its_shortcut_and_clears_the_box_first(self):
+        _, events = self._run(Command("search", "WhatsApp", target="Puneet Jigsaw"))
+        self.assertEqual(events[:2], [("chord", "ctrl", "alt", "/"), ("chord", "ctrl", "a")])
+        self.assertEqual(self._typed(events), "Puneet Jigsaw")
+
+    def test_focus_lost_mid_sequence_sends_no_more_keys(self):
+        (ok, detail), events = self._run(Command("search", "Slack", target="hirefast"), lose_after=3)
+        self.assertFalse(ok)
+        self.assertEqual(detail, "Couldn't focus Slack — nothing typed")
+        self.assertEqual(len(events), 3)
+
+    def test_not_in_front_at_start_sends_nothing(self):
+        (ok, detail), events = self._run(Command("search", "Slack", target="x"), front_at_start=False)
+        self.assertEqual((ok, events), (False, []))
+        self.assertEqual(detail, "Couldn't focus Slack — nothing typed")
+
+    def test_window_not_focused_sends_nothing(self):
+        (ok, detail), events = self._run(Command("search", "Slack", target="x"), focus_ok=False)
+        self.assertEqual((ok, events), (False, []))
+
+    def test_slack_workspace_is_not_supported_yet_and_sends_nothing(self):
+        (ok, detail), events = self._run(Command("search", "Slack", target="general", workspace="jigsaw"))
+        self.assertEqual((ok, detail, events), (False, "Workspace switch not supported yet", []))
+
+    def test_app_without_a_search_shortcut_fails(self):
+        (ok, _), events = self._run(Command("search", "Notes", target="x"))
+        self.assertEqual((ok, events), (False, []))
+
+
 if __name__ == "__main__":
     unittest.main()

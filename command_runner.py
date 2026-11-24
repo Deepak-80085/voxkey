@@ -1,4 +1,4 @@
-"""Run spoken commands. Slice 1.2: open an app. Nothing here types or pastes."""
+"""Run spoken commands: open an app (1.2), search inside an app (1.3). Never pastes."""
 
 from __future__ import annotations
 
@@ -9,11 +9,38 @@ import threading
 import time
 from pathlib import Path
 
-from window_focus import focus_app
+from window_focus import focus_app, is_foreground
 from voice_commands import AMBIGUOUS, UNKNOWN, Command, Known, parse
 
 CHROME_STATE = Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data" / "Local State"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# app (lower case) -> shortcut that opens its search box; WhatsApp's box is cleared first (it once showed "//")
+SEARCH_KEYS = {"slack": ("ctrl", "k"), "t3 code": ("ctrl", "k"), "whatsapp": ("ctrl", "alt", "/")}
+
+
+class PynputKeys:
+    """Real key sender. One event per call, so the runner can check the window before each."""
+    _NAMES = {"ctrl": "ctrl", "alt": "alt", "enter": "enter"}
+
+    def __init__(self):
+        from pynput import keyboard
+        self._kb, self._c = keyboard, keyboard.Controller()
+
+    def _key(self, name):
+        return getattr(self._kb.Key, name) if name in self._NAMES else name
+
+    def chord(self, *names):
+        keys = [self._key(n) for n in names]
+        for k in keys:
+            self._c.press(k)
+        for k in reversed(keys):
+            self._c.release(k)
+
+    def type_char(self, char):
+        self._c.type(char)
+
+    def tap(self, name):
+        self._c.tap(self._key(name))
 
 
 def known_from(settings: dict, chrome_state: dict | None) -> Known:
@@ -57,7 +84,8 @@ def get_start_apps() -> list[dict]:
 
 class CommandRunner:
     def __init__(self, logger=None, known: Known | None = None, start_apps=get_start_apps,
-                 launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0):
+                 launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
+                 keys=None, in_front=is_foreground, pause=time.sleep):
         self.logger = logger
         self.known = known or Known()
         self._start_apps = start_apps
@@ -65,6 +93,9 @@ class CommandRunner:
         self._focus = focus
         self._wait = wait
         self._retry_delay = retry_delay
+        self._keys = keys
+        self._in_front = in_front
+        self._pause = pause
         self._apps: list[dict] = []
         self._ready = threading.Event()
         self._loader: threading.Thread | None = None
@@ -103,22 +134,50 @@ class CommandRunner:
         return None
 
     def run(self, command: Command) -> tuple[bool, str]:
+        if command.kind == "search":
+            return self._search(command)
         if command.kind != "app":
             if command.account in (AMBIGUOUS, UNKNOWN):
                 return False, "Account not clear"
             return False, "Not supported yet"
+        return self._open(command.name)
+
+    def _search(self, command: Command) -> tuple[bool, str]:
+        name = command.name
+        shortcut = SEARCH_KEYS.get(name.casefold())
+        if not shortcut or not command.target:
+            return False, f"Search in {name} not supported yet"
+        if command.workspace:
+            return False, "Workspace switch not supported yet"
+        ok, detail = self._open(name)
+        if not ok:
+            return ok, detail
+        if self._keys is None:
+            self._keys = PynputKeys()
+        k, wait = self._keys, self._pause
+        steps = [(wait, (0.3,)), (k.chord, shortcut), (wait, (0.3,))]  # the search box needs a moment to open
+        if name.casefold() == "whatsapp":
+            steps += [(k.chord, ("ctrl", "a")), (wait, (0.15,))]
+        steps += [(k.type_char, (c,)) for c in command.target] + [(wait, (0.4,)), (k.tap, ("enter",))]
+        for send, args in steps:
+            if send != wait and not self._in_front(name):  # safety: no key goes out unless the app is in front
+                return False, f"Couldn't focus {name} — nothing typed"
+            send(*args)
+        return True, f"Searched {name} for {command.target}"
+
+    def _open(self, name: str) -> tuple[bool, str]:
         self.warm()
         if not self._ready.wait(self._wait):
             return False, "Apps still loading \u2014 try again"
-        app_id = self._app_id(command.name)
+        app_id = self._app_id(name)
         if not app_id:
-            return False, f"Couldn't open {command.name}"
+            return False, f"Couldn't open {name}"
         try:
             self._launch(["explorer.exe", rf"shell:AppsFolder\{app_id}"])
         except OSError:
             if self.logger:
                 self.logger.exception("App launch failed")
-            return False, f"Couldn't open {command.name}"
-        if not self._focus(command.name):
-            return False, f"Couldn't bring {command.name} to front"
-        return True, f"Opened {command.name}"
+            return False, f"Couldn't open {name}"
+        if not self._focus(name):
+            return False, f"Couldn't bring {name} to front"
+        return True, f"Opened {name}"

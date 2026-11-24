@@ -105,6 +105,17 @@ def bring_to_front(hwnd: int, timeout: float = 1.5) -> bool:
             return False
 
 
+def is_foreground(name: str) -> bool:
+    """True only when the window in front right now belongs to that app (same match as find_window)."""
+    exe, word = WINDOWS.get(name.casefold(), (f"{name.casefold()}.exe", None))
+    hwnd = _user32.GetForegroundWindow()
+    if not hwnd:
+        return False
+    title = ctypes.create_unicode_buffer(256)
+    _user32.GetWindowTextW(hwnd, title, 256)
+    return bool((exe and _exe_name(hwnd) == exe) or (word and word in title.value))
+
+
 def focus_app(name: str, find=find_window, bring=bring_to_front, timeout: float = 10.0,
               sleep=time.sleep, clock=time.monotonic) -> bool:
     """Wait up to `timeout` s for the app's window, then bring it to the front. True only when it is."""
