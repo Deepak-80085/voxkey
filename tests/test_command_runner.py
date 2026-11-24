@@ -374,12 +374,16 @@ class TerminalTests(unittest.TestCase):
     def test_drive_only_opens_terminal_there_with_an_argv_list(self):
         ok, detail = self.make().run(Command("terminal", "Terminal", drive="t"))
         self.assertTrue(ok)
-        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root)])
+        self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root)])
         self.assertEqual(self.focus_calls, ["terminal"])
 
     def test_run_claude_adds_cmd_k_claude(self):
         self.make().run(Command("terminal", "Terminal", drive="t", run_claude=True))
-        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root), "cmd", "/k", "claude"])
+        self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root), "cmd", "/k", "claude"])
+
+    def test_wt_is_a_full_path_to_the_app_alias_when_it_is_not_on_path(self):
+        self.assertTrue(command_runner.WT.lower().endswith("wt.exe"))
+        self.assertTrue(command_runner.WT == "wt.exe" or Path(command_runner.WT).is_absolute())
 
     def test_missing_drive_fails_and_launches_nothing(self):
         ok, detail = self.make().run(Command("terminal", "Terminal", drive="q"))
@@ -405,7 +409,7 @@ class TerminalTests(unittest.TestCase):
         ok, _ = self.run_words("clients", "ai interview", run_claude=True)
         self.assertTrue(ok)
         self.launch.assert_called_once_with(
-            ["wt.exe", "-w", "new", "-d", str(self.root / "sudo/clients/bopal/AI_interview"), "cmd", "/k", "claude"])
+            [command_runner.WT, "-w", "new", "-d", str(self.root / "sudo/clients/bopal/AI_interview"), "cmd", "/k", "claude"])
 
     def test_last_word_must_equal_the_folder_name_not_just_appear_in_it(self):
         self.mkdirs("clients/AI_interview_old")
@@ -416,7 +420,7 @@ class TerminalTests(unittest.TestCase):
     def test_earlier_words_are_hints_in_order(self):
         self.mkdirs("alpha/app", "beta/app")
         self.assertTrue(self.run_words("beta", "app")[0])
-        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root / "beta/app")])
+        self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "beta/app")])
         self.assertEqual(self.run_words("beta", "alpha", "app")[1], "Folder not found")  # wrong order
 
     def test_several_matches_fail_and_list_up_to_three(self):
@@ -430,13 +434,13 @@ class TerminalTests(unittest.TestCase):
     def test_skip_list_and_dot_folders_are_not_searched(self):
         self.mkdirs("node_modules/app", ".git/app", "$RECYCLE.BIN/app", "x/.hidden/app", "x/venv/app", "real/app")
         self.run_words("app")
-        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root / "real/app")])
+        self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "real/app")])
 
     def test_no_drive_searches_the_folder_roots_setting(self):
         self.mkdirs("proj/voxkey")
         ok, _ = self.run_words("voxkey", drive="", folder_roots=["t"])
         self.assertTrue(ok)
-        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root / "proj/voxkey")])
+        self.launch.assert_called_once_with([command_runner.WT, "-w", "new", "-d", str(self.root / "proj/voxkey")])
 
     def test_search_time_is_logged(self):
         self.mkdirs("proj/voxkey")

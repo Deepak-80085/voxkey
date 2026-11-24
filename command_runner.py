@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -14,6 +15,8 @@ from window_focus import UiaSearchBox, focus_app, focus_new, is_foreground
 from voice_commands import AMBIGUOUS, UNKNOWN, Command, Known, parse
 
 CHROME_STATE = Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data" / "Local State"
+# wt.exe is an app alias in WindowsApps; a process started without that folder on PATH (measured) can't find it by name.
+WT = shutil.which("wt.exe") or str(Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WindowsApps" / "wt.exe")
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # app (lower case) -> shortcut that opens its search box (WhatsApp's box once showed a stray "/")
 SEARCH_KEYS = {"slack": ("ctrl", "k"), "t3 code": ("ctrl", "k"), "whatsapp": ("ctrl", "alt", "/")}
@@ -292,7 +295,7 @@ class CommandRunner:
         else:
             return False, "Say which drive"
         # Only a directory we resolved goes on the command line, never spoken text.
-        argv = ["wt.exe", "-w", "new", "-d", str(root)] + (["cmd", "/k", "claude"] if command.run_claude else [])
+        argv = [WT, "-w", "new", "-d", str(root)] + (["cmd", "/k", "claude"] if command.run_claude else [])
 
         def start():
             self._launch(argv)
