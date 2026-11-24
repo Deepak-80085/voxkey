@@ -90,7 +90,7 @@ class VoxKeyController:
         finally:
             self._validation_lock.release()
 
-    def _run_command(self, transcript: str, since: float) -> bool | None:
+    def _run_command(self, transcript: str, since: float, released_at: float | None = None) -> bool | None:
         """None: not a command. Otherwise whether it worked; either way nothing is pasted."""
         try:
             command = self.commands.parse(transcript)
@@ -109,13 +109,18 @@ class VoxKeyController:
         command_ms = round((self.clock() - since) * 1000)
         if self.logger:
             self.logger.info("Command completed; success=%s; command_ms=%d", ok, command_ms)
+            if released_at is not None:
+                focused_at = getattr(self.commands, "focused_at", None)
+                action_ms = round((focused_at - released_at) * 1000) if focused_at is not None else None
+                self.logger.info("Command action; action_ms=%s", action_ms)  # key release -> app in front
         self._emit("command_succeeded" if ok else "command_failed", AppState.READY, detail, command_ms)
         return ok
 
     def can_dictate(self) -> bool:
         return self.state is AppState.READY
 
-    def process_audio(self, audio_path: Path, target_hwnd=None, app: str | None = None) -> bool:
+    def process_audio(self, audio_path: Path, target_hwnd=None, app: str | None = None,
+                      released_at: float | None = None) -> bool:
         if self.state not in (AppState.READY, AppState.LISTENING):
             return False
         if self.edit_watcher:
@@ -158,7 +163,7 @@ class VoxKeyController:
                 if self.logger:
                     self.logger.info("Command second pass; elapsed_ms=%d",
                                      round((time.perf_counter() - second_started) * 1000))
-                outcome = self._run_command(second, transcribe_finished)
+                outcome = self._run_command(second, transcribe_finished, released_at)
             if outcome is not None:
                 self._set_state(AppState.READY)
                 return outcome

@@ -65,6 +65,7 @@ class VoxKeyRuntime:
             "hotkey": "right_ctrl",
             "microphone": None,
             "vocabulary": [],
+            "command_words": [],  # names for spoken commands only (channels, chats); never in normal dictation
             "start_with_windows": False,
             "sounds_enabled": True,
             "learn_from_edits": False,

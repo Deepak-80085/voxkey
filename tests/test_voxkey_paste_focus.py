@@ -37,9 +37,10 @@ class VoxKeyPasteFocusTests(unittest.TestCase):
         service.paste_target_app = "notepad.exe"
         service.recorder.stop_and_save = Mock(return_value="recording.wav")
 
-        service._release(__import__("pynput").keyboard.Key.ctrl_r)
+        with patch("voxkey_app.time.monotonic", return_value=77.5):
+            service._release(__import__("pynput").keyboard.Key.ctrl_r)
 
-        self.assertEqual(service.jobs.get_nowait(), ("recording.wav", 1234, "notepad.exe"))
+        self.assertEqual(service.jobs.get_nowait(), ("recording.wav", 1234, "notepad.exe", 77.5))
 
     def test_restore_foreground_window_uses_windows_focus_api(self):
         user32 = Mock()

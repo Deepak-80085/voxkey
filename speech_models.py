@@ -60,6 +60,7 @@ class SpeechModelManager:
         self,
         runtime: VoxKeyRuntime,
         vocabulary_provider: Callable[[], list[str]] | None = None,
+        command_words_provider: Callable[[], list[str]] | None = None,
         model_loader=WhisperModel,
         downloader=snapshot_download,
         cuda_checker=None,
@@ -68,6 +69,7 @@ class SpeechModelManager:
     ):
         self.runtime = runtime
         self.vocabulary_provider = vocabulary_provider or (lambda: [])
+        self.command_words_provider = command_words_provider or (lambda: [])  # second "open ..." pass only
         self.model_loader = model_loader
         self.downloader = downloader
         self.cuda_checker = cuda_checker or self._missing_cuda_runtime
@@ -185,6 +187,8 @@ class SpeechModelManager:
     def _transcribe_once(self, audio_path: Path, beam_size: int, command_terms: bool = False) -> str:
         self.logger.info("Transcribing with device=%s", self.device)
         words = self.vocabulary_provider()
+        if command_terms:
+            words = [*self.command_words_provider(), *words]
         segments, _ = self.model.transcribe(
             _read_recording(audio_path),
             language="en",

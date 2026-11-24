@@ -308,6 +308,7 @@ class HoldToDictateService:
             self.ignore_cycle = True
 
     def _release(self, key) -> None:
+        released_at = time.monotonic()  # action_ms starts here
         if key != self.trigger_key:
             return
         self.hotkey_down = False
@@ -326,7 +327,7 @@ class HoldToDictateService:
         try:
             audio_path = self.recorder.stop_and_save()
             self.logger.info("Recording saved: %s; target=%s", audio_path, target_hwnd)
-            self.jobs.put((audio_path, target_hwnd, target_app))
+            self.jobs.put((audio_path, target_hwnd, target_app, released_at))
             self._emit("capture_stopped", AppState.TRANSCRIBING)
         except Exception as exc:
             self.logger.exception("Recording stop failed")
@@ -367,10 +368,11 @@ class HoldToDictateService:
             job = self.jobs.get()
             if job is None:
                 return
-            audio_path, target_hwnd, target_app = job
+            audio_path, target_hwnd, target_app, released_at = job
             try:
                 self.logger.info("Processing recording: %s", audio_path)
-                pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd, app=target_app)
+                pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd, app=target_app,
+                                                       released_at=released_at)
                 self.logger.info("Recording processed; pasted=%s", pasted)
             except Exception:
                 self.logger.exception("Unexpected worker failure")
@@ -403,6 +405,8 @@ def main() -> None:
     speech = SpeechModelManager(
         runtime,
         vocabulary_provider=lambda: runtime.load_settings()["vocabulary"],
+        command_words_provider=lambda: [w for w in runtime.load_settings().get("command_words") or []
+                                        if isinstance(w, str)],
         model_name=settings.get("speech_model", "small.en"),
     )
     cuda_runtime = ManagedOllamaRuntime(runtime)

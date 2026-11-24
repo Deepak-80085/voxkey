@@ -105,26 +105,114 @@ def bring_to_front(hwnd: int, timeout: float = 1.5) -> bool:
             return False
 
 
-def is_foreground(name: str) -> bool:
-    """True only when the window in front right now belongs to that app (same match as find_window)."""
-    exe, word = WINDOWS.get(name.casefold(), (f"{name.casefold()}.exe", None))
-    hwnd = _user32.GetForegroundWindow()
-    if not hwnd:
-        return False
-    title = ctypes.create_unicode_buffer(256)
-    _user32.GetWindowTextW(hwnd, title, 256)
-    return bool((exe and _exe_name(hwnd) == exe) or (word and word in title.value))
+def is_foreground(hwnd: int) -> bool:
+    """True only when the window in front right now is exactly that window."""
+    return bool(hwnd) and (_user32.GetForegroundWindow() or 0) == hwnd
 
 
 def focus_app(name: str, find=find_window, bring=bring_to_front, timeout: float = 10.0,
-              sleep=time.sleep, clock=time.monotonic) -> bool:
-    """Wait up to `timeout` s for the app's window, then bring it to the front. True only when it is."""
+              sleep=time.sleep, clock=time.monotonic) -> int | None:
+    """Wait up to `timeout` s for the app's window, then bring it to the front. Its handle only when it is."""
     exe, word = WINDOWS.get(name.casefold(), (f"{name.casefold()}.exe", None))
     deadline = clock() + timeout
     while True:
         hwnd = find(exe, word)
         if hwnd:
-            return bool(bring(hwnd))
+            return hwnd if bring(hwnd) else None
         if clock() >= deadline:
-            return False
+            return None
         sleep(0.25)
+
+
+EDIT_TYPES = (50004, 50003)  # UIA Edit, ComboBox
+_LIST_ITEM = 50007
+
+
+def looks_like_search(control_type: int, name: str, help_text: str, description: str, aria: str) -> bool:
+    """A one-line edit/combo box labelled "search". Measured 2026-11-24 (UI Automation, nothing typed):
+    Slack = combo box "Query", description "Search across people, channels…"; T3 Code = combo box
+    "Search commands, projects, and threads..."; WhatsApp = edit "Search or start a new chat".
+    Their message boxes ("Message", "Type a message to …") are multi-line and never say "search".
+    WhatsApp's Chrome window also has a read-only "Address and search bar"; read-only never matches."""
+    return (control_type in EDIT_TYPES and "multiline=true" not in aria and "readonly=true" not in aria
+            and "search" in f"{name} {help_text} {description}".casefold())
+
+
+class UiaSearchBox:
+    """Reads the focused element of one window through Windows UI Automation (same approach as edit learning).
+    Create it on the thread that uses it."""
+
+    def __init__(self):
+        import comtypes
+        from edit_learning import _WindowsEditReader
+
+        comtypes.CoInitialize()
+        reader = _WindowsEditReader()
+        self.u, self.automation = reader.u, reader.automation
+
+    def _focused_input(self, hwnd: int):
+        """The text box with keyboard focus inside exactly this window, or None."""
+        u, a = self.u, self.automation
+        root = a.ElementFromHandle(hwnd)
+        element = root.FindFirst(u.TreeScope_Descendants,
+                                 a.CreatePropertyCondition(u.UIA_HasKeyboardFocusPropertyId, True))
+        if element and element.CurrentControlType == _LIST_ITEM:
+            # T3 Code: focus shows on the highlighted result; the box is the edit in the same dialog.
+            walker, dialog = a.RawViewWalker, element
+            for _ in range(12):
+                dialog = walker.GetParentElement(dialog)
+                if not dialog or dialog.GetCurrentPropertyValue(u.UIA_AriaRolePropertyId) == "dialog":
+                    break
+            if not dialog:
+                return None
+            boxes = a.CreateOrCondition(
+                a.CreatePropertyCondition(u.UIA_ControlTypePropertyId, EDIT_TYPES[0]),
+                a.CreatePropertyCondition(u.UIA_ControlTypePropertyId, EDIT_TYPES[1]))
+            element = dialog.FindFirst(u.TreeScope_Descendants, boxes)
+        if not element or element.CurrentIsPassword or element.CurrentControlType not in EDIT_TYPES:
+            return None
+        return element
+
+    def _in_whatsapp_side(self, element) -> bool:
+        # WhatsApp hides its "Search…" label once the box has text; its box sits in the chat list pane "side".
+        walker = self.automation.RawViewWalker
+        for _ in range(12):
+            element = walker.GetParentElement(element)
+            if not element:
+                return False
+            if element.CurrentAutomationId == "side":
+                return True
+        return False
+
+    def find(self, hwnd: int):
+        """The focused box if it is the window's search box, else None. Never raises."""
+        try:
+            element = self._focused_input(hwnd)
+            if not element:
+                return None
+            aria = element.GetCurrentPropertyValue(self.u.UIA_AriaPropertiesPropertyId) or ""
+            if looks_like_search(element.CurrentControlType, element.CurrentName, element.CurrentHelpText,
+                                 element.GetCurrentPropertyValue(self.u.UIA_FullDescriptionPropertyId) or "",
+                                 aria):
+                return element
+            value = self.value_of(element)
+            if (value or "").strip() and "multiline=true" not in aria and self._in_whatsapp_side(element):
+                return element  # text left in it; the runner clears it and confirms the label again
+        except Exception:
+            pass
+        return None
+
+    def value_of(self, element) -> str | None:
+        try:
+            pattern = element.GetCurrentPattern(self.u.UIA_ValuePatternId)
+            return pattern.QueryInterface(self.u.IUIAutomationValuePattern).CurrentValue
+        except Exception:
+            return None
+
+    def same(self, hwnd: int, element) -> bool:
+        """The box still has keyboard focus inside that window."""
+        try:
+            current = self._focused_input(hwnd)
+            return bool(current) and bool(self.automation.CompareElements(current, element))
+        except Exception:
+            return False

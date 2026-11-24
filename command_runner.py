@@ -9,32 +9,49 @@ import threading
 import time
 from pathlib import Path
 
-from window_focus import focus_app, is_foreground
+from window_focus import UiaSearchBox, focus_app, is_foreground
 from voice_commands import AMBIGUOUS, UNKNOWN, Command, Known, parse
 
 CHROME_STATE = Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data" / "Local State"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-# app (lower case) -> shortcut that opens its search box; WhatsApp's box is cleared first (it once showed "//")
+# app (lower case) -> shortcut that opens its search box (WhatsApp's box once showed a stray "/")
 SEARCH_KEYS = {"slack": ("ctrl", "k"), "t3 code": ("ctrl", "k"), "whatsapp": ("ctrl", "alt", "/")}
+# Enter opens the top result. Not T3 Code: its Enter on no match made a "New thread"; it just shows results.
+PRESS_ENTER = {"slack", "whatsapp"}
+BOX_WAIT_S, POLL_S = 1.5, 0.05
+NOTHING_TYPED = "Search box not found \u2014 nothing typed"
+NOTHING_SENT = "Search box not found \u2014 nothing sent"
+
+
+class _FocusLost(Exception):
+    pass
 
 
 class PynputKeys:
     """Real key sender. One event per call, so the runner can check the window before each."""
-    _NAMES = {"ctrl": "ctrl", "alt": "alt", "enter": "enter"}
+    _NAMES = {"ctrl", "alt", "shift", "enter", "esc", "backspace", "f13"}
 
-    def __init__(self):
+    def __init__(self, controller=None):
         from pynput import keyboard
-        self._kb, self._c = keyboard, keyboard.Controller()
+        self._kb, self._c = keyboard, controller or keyboard.Controller()
 
     def _key(self, name):
         return getattr(self._kb.Key, name) if name in self._NAMES else name
 
     def chord(self, *names):
-        keys = [self._key(n) for n in names]
-        for k in keys:
-            self._c.press(k)
-        for k in reversed(keys):
-            self._c.release(k)
+        pressed = []
+        try:
+            for name in names:
+                key = self._key(name)
+                self._c.press(key)
+                pressed.append(key)
+        finally:
+            for key in reversed(pressed):
+                self._c.release(key)
+
+    def release_modifiers(self):
+        for key in (self._kb.Key.ctrl, self._kb.Key.alt, self._kb.Key.shift):
+            self._c.release(key)
 
     def type_char(self, char):
         self._c.type(char)
@@ -85,7 +102,7 @@ def get_start_apps() -> list[dict]:
 class CommandRunner:
     def __init__(self, logger=None, known: Known | None = None, start_apps=get_start_apps,
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
-                 keys=None, in_front=is_foreground, pause=time.sleep):
+                 keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic):
         self.logger = logger
         self.known = known or Known()
         self._start_apps = start_apps
@@ -96,6 +113,9 @@ class CommandRunner:
         self._keys = keys
         self._in_front = in_front
         self._pause = pause
+        self._box = box
+        self._clock = clock
+        self.focused_at: float | None = None  # clock time the app came to the front, for action_ms
         self._apps: list[dict] = []
         self._ready = threading.Event()
         self._loader: threading.Thread | None = None
@@ -140,7 +160,16 @@ class CommandRunner:
             if command.account in (AMBIGUOUS, UNKNOWN):
                 return False, "Account not clear"
             return False, "Not supported yet"
-        return self._open(command.name)
+        return self._open(command.name)[:2]
+
+    def _poll(self, check):
+        """check() until it gives something truthy, at most BOX_WAIT_S."""
+        deadline = self._clock() + BOX_WAIT_S
+        while True:
+            found = check()
+            if found or self._clock() >= deadline:
+                return found
+            self._pause(POLL_S)
 
     def _search(self, command: Command) -> tuple[bool, str]:
         name = command.name
@@ -149,35 +178,73 @@ class CommandRunner:
             return False, f"Search in {name} not supported yet"
         if command.workspace:
             return False, "Workspace switch not supported yet"
-        ok, detail = self._open(name)
+        ok, detail, hwnd = self._open(name)
         if not ok:
             return ok, detail
         if self._keys is None:
             self._keys = PynputKeys()
-        k, wait = self._keys, self._pause
-        steps = [(wait, (0.3,)), (k.chord, shortcut), (wait, (0.3,))]  # the search box needs a moment to open
-        if name.casefold() == "whatsapp":
-            steps += [(k.chord, ("ctrl", "a")), (wait, (0.15,))]
-        steps += [(k.type_char, (c,)) for c in command.target] + [(wait, (0.4,)), (k.tap, ("enter",))]
-        for send, args in steps:
-            if send != wait and not self._in_front(name):  # safety: no key goes out unless the app is in front
-                return False, f"Couldn't focus {name} — nothing typed"
-            send(*args)
-        return True, f"Searched {name} for {command.target}"
+        if self._box is None:
+            self._box = UiaSearchBox()  # created on the worker thread that uses it
+        k, box, target = self._keys, self._box, command.target
 
-    def _open(self, name: str) -> tuple[bool, str]:
+        def send(key_event, *args):
+            if not self._in_front(hwnd):  # safety: no key goes out unless that exact window is in front
+                raise _FocusLost
+            key_event(*args)
+
+        def text(element):
+            return (box.value_of(element) or "").strip()
+
+        def give_up(detail):
+            if self._in_front(hwnd):
+                k.tap("esc")
+            return False, detail
+
+        def typed():
+            return box.same(hwnd, element) and text(element) == target.strip()
+
+        try:
+            send(k.chord, *shortcut)
+            if not self._poll(lambda: box.find(hwnd)):
+                return give_up(NOTHING_TYPED)
+            # Clear it even when it reads empty: WhatsApp's own "/" lands ~0.1 s after its box opens (measured).
+            # Keys arrive in order, so this also removes a "/" that UI Automation has not shown yet.
+            send(k.chord, "ctrl", "a")
+            send(k.tap, "backspace")
+            element = self._poll(lambda: (found := box.find(hwnd)) and not text(found) and found)
+            if not element:
+                return give_up(NOTHING_TYPED)
+            for char in target:
+                send(k.type_char, char)
+            if not self._poll(typed):
+                return give_up(NOTHING_SENT)
+            if name.casefold() in PRESS_ENTER:
+                if not typed():  # re-check right before Enter
+                    return give_up(NOTHING_SENT)
+                send(k.tap, "enter")
+        except _FocusLost:
+            return False, f"Couldn't focus {name} \u2014 nothing typed"
+        except Exception:
+            k.release_modifiers()
+            raise
+        return True, f"Searched {name} for {target}"
+
+    def _open(self, name: str) -> tuple[bool, str, int | None]:
+        self.focused_at = None
         self.warm()
         if not self._ready.wait(self._wait):
-            return False, "Apps still loading \u2014 try again"
+            return False, "Apps still loading \u2014 try again", None
         app_id = self._app_id(name)
         if not app_id:
-            return False, f"Couldn't open {name}"
+            return False, f"Couldn't open {name}", None
         try:
             self._launch(["explorer.exe", rf"shell:AppsFolder\{app_id}"])
         except OSError:
             if self.logger:
                 self.logger.exception("App launch failed")
-            return False, f"Couldn't open {name}"
-        if not self._focus(name):
-            return False, f"Couldn't bring {name} to front"
-        return True, f"Opened {name}"
+            return False, f"Couldn't open {name}", None
+        hwnd = self._focus(name)
+        if not hwnd:
+            return False, f"Couldn't bring {name} to front", None
+        self.focused_at = self._clock()
+        return True, f"Opened {name}", hwnd

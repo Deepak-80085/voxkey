@@ -93,6 +93,16 @@ class CommandControllerTests(unittest.TestCase):
         self.assertEqual(emitted[-1].state, AppState.READY)
         logger.info.assert_any_call("Command completed; success=%s; command_ms=%d", True, 400)
 
+    def test_action_ms_runs_from_key_release_to_app_focused(self):
+        controller, _, _, commands, logger, _ = self._make("CMD")
+        commands.focused_at = 2.35
+        controller.process_audio(Path("s.wav"), released_at=0.9)
+        logger.info.assert_any_call("Command action; action_ms=%s", 1450)
+        controller, _, _, commands, logger, _ = self._make("CMD")
+        commands.focused_at = None  # app never came to the front
+        controller.process_audio(Path("s.wav"), released_at=0.9)
+        logger.info.assert_any_call("Command action; action_ms=%s", None)
+
     def test_failed_command_emits_failure_and_pastes_nothing(self):
         controller, paste, _, _, _, events = self._make("CMD", result=(False, "Couldn't open Slack"))
         self.assertFalse(controller.process_audio(Path("s.wav")))
