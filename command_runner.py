@@ -1,4 +1,4 @@
-"""Run spoken commands: open an app (1.2), search inside an app (1.3). Never pastes."""
+"""Run spoken commands: open an app, search inside an app, open a terminal in a folder. Never pastes."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from window_focus import UiaSearchBox, focus_app, is_foreground
+from window_focus import UiaSearchBox, focus_app, focus_new, is_foreground
 from voice_commands import AMBIGUOUS, UNKNOWN, Command, Known, parse
 
 CHROME_STATE = Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data" / "Local State"
@@ -21,6 +21,10 @@ PRESS_ENTER = {"slack", "whatsapp"}
 BOX_WAIT_S, POLL_S = 1.5, 0.05
 NOTHING_TYPED = "Search box not found \u2014 nothing typed"
 NOTHING_SENT = "Search box not found \u2014 nothing sent"
+
+
+def drive_root(letter: str) -> Path:
+    return Path(f"{letter.upper()}:\\")
 
 
 class _FocusLost(Exception):
@@ -102,7 +106,8 @@ def get_start_apps() -> list[dict]:
 class CommandRunner:
     def __init__(self, logger=None, known: Known | None = None, start_apps=get_start_apps,
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
-                 keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic):
+                 keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic,
+                 new_window=focus_new, drive_root=drive_root):
         self.logger = logger
         self.known = known or Known()
         self._start_apps = start_apps
@@ -115,6 +120,8 @@ class CommandRunner:
         self._pause = pause
         self._box = box
         self._clock = clock
+        self._new_window = new_window
+        self._drive_root = drive_root
         self.focused_at: float | None = None  # clock time the app came to the front, for action_ms
         self._apps: list[dict] = []
         self._ready = threading.Event()
@@ -156,6 +163,8 @@ class CommandRunner:
     def run(self, command: Command) -> tuple[bool, str]:
         if command.kind == "search":
             return self._search(command)
+        if command.kind == "terminal":
+            return self._terminal(command)
         if command.kind != "app":
             if command.account in (AMBIGUOUS, UNKNOWN):
                 return False, "Account not clear"
@@ -228,6 +237,32 @@ class CommandRunner:
             k.release_modifiers()
             raise
         return True, f"Searched {name} for {target}"
+
+    def _terminal(self, command: Command) -> tuple[bool, str]:
+        self.focused_at = None
+        if not command.drive:
+            return False, "Say which drive"
+        root = self._drive_root(command.drive)
+        if not root.is_dir():
+            return False, f"Drive {command.drive.upper()}: not found"
+        if command.words:
+            return False, "Not supported yet"
+        # Only a directory we resolved goes on the command line, never spoken text.
+        argv = ["wt.exe", "-w", "new", "-d", str(root)] + (["cmd", "/k", "claude"] if command.run_claude else [])
+
+        def start():
+            self._launch(argv)
+
+        try:
+            hwnd = self._new_window("terminal", start)
+        except OSError:
+            if self.logger:
+                self.logger.exception("Terminal launch failed")
+            return False, "Couldn't open Terminal"
+        if not hwnd:
+            return False, "Couldn't bring Terminal to front"
+        self.focused_at = self._clock()
+        return True, f"Opened Terminal in {root}"
 
     def _open(self, name: str) -> tuple[bool, str, int | None]:
         self.focused_at = None

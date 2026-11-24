@@ -42,5 +42,30 @@ class FocusAppTests(unittest.TestCase):
         self.assertEqual(WINDOWS["chatgpt"][0], "chatgpt.exe")
 
 
+class FocusNewTests(unittest.TestCase):
+    def _run(self, found, bring, timeout=1.0):
+        now = [0.0]
+        sleep = lambda s: now.__setitem__(0, now[0] + s)
+        started = Mock()
+        hwnd = window_focus.focus_new("Terminal", started, find=Mock(side_effect=found), bring=bring,
+                                      timeout=timeout, sleep=sleep, clock=lambda: now[0])
+        return hwnd, started
+
+    def test_focuses_only_the_window_that_was_not_there_before_launch(self):
+        bring = Mock(return_value=True)
+        hwnd, started = self._run([[5, 6], [5, 6], [5, 6, 9]], bring)
+        self.assertEqual(hwnd, 9)
+        bring.assert_called_once_with(9)
+        started.assert_called_once_with()
+
+    def test_none_when_no_new_window_appears(self):
+        bring = Mock()
+        self.assertIsNone(self._run([[5]] * 20, bring)[0])
+        bring.assert_not_called()
+
+    def test_none_when_the_new_window_will_not_take_focus(self):
+        self.assertIsNone(self._run([[5], [5, 9]], Mock(return_value=False))[0])
+
+
 if __name__ == "__main__":
     unittest.main()

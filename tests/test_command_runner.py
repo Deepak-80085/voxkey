@@ -1,6 +1,8 @@
 import unittest
+import tempfile
 import threading
 import time
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import command_runner
@@ -50,10 +52,8 @@ class CommandRunnerTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(detail, "Couldn't open Slack")
 
-    def test_other_kinds_are_not_supported_yet(self):
+    def test_site_is_not_supported_yet(self):
         launch = Mock()
-        ok, detail = runner(launch=launch).run(Command("terminal", "Terminal"))
-        self.assertEqual((ok, detail), (False, "Not supported yet"))
         ok, detail = runner(launch=launch).run(Command("site", "GitHub", account=AMBIGUOUS))
         self.assertEqual((ok, detail), (False, "Account not clear"))
         launch.assert_not_called()
@@ -344,6 +344,53 @@ class SearchLabelTests(unittest.TestCase):
     def test_multiline_or_non_edit_never_matches_even_with_search_in_the_name(self):
         self.assertFalse(looks_like_search(EDIT_TYPES[0], "Search notes", "", "", "multiline=true"))
         self.assertFalse(looks_like_search(50000, "Search", "", "", ""))  # a button
+
+
+class TerminalTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.launch = Mock()
+        self.focus_calls = []
+
+    def make(self, focus_ok=True):
+        def new_window(name, start):
+            start()
+            self.focus_calls.append(name)
+            return 77 if focus_ok else None
+        drives = {"t": self.root}
+        return CommandRunner(Mock(), launch=self.launch, new_window=new_window,
+                             drive_root=lambda letter: drives.get(letter, Path(f"{letter}:/not-here")))
+
+    def test_drive_only_opens_terminal_there_with_an_argv_list(self):
+        ok, detail = self.make().run(Command("terminal", "Terminal", drive="t"))
+        self.assertTrue(ok)
+        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root)])
+        self.assertEqual(self.focus_calls, ["terminal"])
+
+    def test_run_claude_adds_cmd_k_claude(self):
+        self.make().run(Command("terminal", "Terminal", drive="t", run_claude=True))
+        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root), "cmd", "/k", "claude"])
+
+    def test_missing_drive_fails_and_launches_nothing(self):
+        ok, detail = self.make().run(Command("terminal", "Terminal", drive="q"))
+        self.assertEqual((ok, detail), (False, "Drive Q: not found"))
+        self.launch.assert_not_called()
+
+    def test_no_drive_and_no_roots_asks_which_drive(self):
+        ok, detail = self.make().run(Command("terminal", "Terminal", words=("zebra",)))
+        self.assertEqual((ok, detail), (False, "Say which drive"))
+        self.launch.assert_not_called()
+
+    def test_not_success_until_the_new_window_is_in_front(self):
+        ok, detail = self.make(focus_ok=False).run(Command("terminal", "Terminal", drive="t"))
+        self.assertEqual((ok, detail), (False, "Couldn't bring Terminal to front"))
+
+    def test_launch_error_fails(self):
+        self.launch.side_effect = OSError("no")
+        ok, detail = self.make().run(Command("terminal", "Terminal", drive="t"))
+        self.assertEqual((ok, detail), (False, "Couldn't open Terminal"))
 
 
 if __name__ == "__main__":

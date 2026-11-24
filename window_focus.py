@@ -59,8 +59,8 @@ def _exe_name(hwnd) -> str:
     return ""
 
 
-def find_window(exe: str | None, title_word: str | None = None) -> int | None:
-    """First visible, titled top-level window of that exe (or with that word in the title)."""
+def list_windows(exe: str | None, title_word: str | None = None, limit: int | None = None) -> list[int]:
+    """Visible, titled top-level windows of that exe (or with that word in the title), up to `limit`."""
     found: list[int] = []
 
     def visit(hwnd, _):
@@ -70,13 +70,17 @@ def find_window(exe: str | None, title_word: str | None = None) -> int | None:
         _user32.GetWindowTextW(hwnd, title, 256)
         if not title.value:
             return True
-        name = _exe_name(hwnd)
-        if (exe and name == exe) or (title_word and title_word in title.value):
+        if (exe and _exe_name(hwnd) == exe) or (title_word and title_word in title.value):
             found.append(int(hwnd))
-            return False
+            return limit is None or len(found) < limit
         return True
 
     _user32.EnumWindows(_ENUM(visit), 0)
+    return found
+
+
+def find_window(exe: str | None, title_word: str | None = None) -> int | None:
+    found = list_windows(exe, title_word, limit=1)
     return found[0] if found else None
 
 
@@ -119,6 +123,23 @@ def focus_app(name: str, find=find_window, bring=bring_to_front, timeout: float 
         hwnd = find(exe, word)
         if hwnd:
             return hwnd if bring(hwnd) else None
+        if clock() >= deadline:
+            return None
+        sleep(0.25)
+
+
+def focus_new(name: str, start, find=list_windows, bring=bring_to_front, timeout: float = 10.0,
+              sleep=time.sleep, clock=time.monotonic) -> int | None:
+    """Run start(), then bring to the front the app window that was not there before. Its handle only when it is.
+    For apps that run all windows in one process (Windows Terminal), so the new one is told apart by handle."""
+    exe, word = WINDOWS.get(name.casefold(), (f"{name.casefold()}.exe", None))
+    before = set(find(exe, word))
+    start()
+    deadline = clock() + timeout
+    while True:
+        new = [h for h in find(exe, word) if h not in before]
+        if new:
+            return new[0] if bring(new[0]) else None
         if clock() >= deadline:
             return None
         sleep(0.25)
