@@ -96,6 +96,16 @@ class VoiceCommandTests(unittest.TestCase):
         self.assertEqual(gmail("in Zed account"), UNKNOWN)
         self.assertEqual(gmail("in Pat acme account"), UNKNOWN)
 
+    def test_site_named_like_an_app_never_hijacks_the_app(self):
+        known = Known(**{**KNOWN.__dict__, "sites": {**KNOWN.sites, "Slack": "https://slack.example.test"}})
+        self.assertEqual(parse("Open Slack.", known), Command("app", "Slack"))
+        self.assertEqual(parse("open general channel in slack", known),
+                         Command("search", "Slack", target="general"))
+
+    def test_saved_site_overrides_a_built_in_site_of_the_same_name(self):
+        known = Known(**{**KNOWN.__dict__, "sites": {**BUILTIN_SITES, "GitHub": "https://git.example.test"}})
+        self.assertEqual(parse("Open GitHub.", known), Command("site", "GitHub", url="https://git.example.test"))
+
     def test_only_whole_command_sentences_match(self):
         for text in ("open slack is down today", "Open the file and send it to Slack",
                      "Open a new tab and write the email", "Open Claude code review notes tomorrow",

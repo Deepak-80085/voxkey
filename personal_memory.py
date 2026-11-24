@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import re
 import threading
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+
+from voice_commands import APPS
 
 
 class PersonalMemory:
@@ -203,8 +206,11 @@ class PersonalMemory:
     def add_site(self, name: str, url: str) -> None:
         name = self._phrase(name, "Website name")
         url = url.strip()
-        if not re.fullmatch(r"https?://\S+", url):
-            raise ValueError("Web address must start with https:// or http://")
+        if not re.fullmatch(r"https?://\S+", url) or len(url) > 2048 or '"' in url or any(
+                unicodedata.category(char) == "Cc" for char in url):
+            raise ValueError("Web address must be http(s), up to 2048 characters, with no spaces, quotes, or control characters")
+        if name.casefold() in {app.casefold() for app in (*APPS, "Claude Code")}:
+            raise ValueError(f"{name} is an app name; pick another name for the website")
         with self._lock:
             self._check_editable()
             sites = self._data["sites"]

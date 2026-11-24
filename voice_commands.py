@@ -18,6 +18,7 @@ BUILTIN_SITES = {
     "Gmail": "https://mail.google.com",
     "Google Meet": "https://meet.google.com",
 }
+APPS = ("Slack", "T3 Code", "Claude", "ChatGPT", "WhatsApp", "Chrome", "Terminal")
 _SEARCHABLE = {"slack", "whatsapp", "t3 code"}
 _KEYWORDS = {"channel", "chat", "thread"}
 _FILLER = {"the", "a", "an", "app", "application", "desktop"}
@@ -30,7 +31,7 @@ _FOLDER_FILLER = _FOLDER_BREAK | {"open", "the", "a", "my", "terminal", "claude"
 @dataclass(frozen=True)
 class Known:
     """What the user has set up. Lowercase keys in orgs; accounts are emails."""
-    apps: tuple[str, ...] = ("Slack", "T3 Code", "Claude", "ChatGPT", "WhatsApp", "Chrome", "Terminal")
+    apps: tuple[str, ...] = APPS
     sites: dict[str, str] = field(default_factory=lambda: dict(BUILTIN_SITES))
     accounts: tuple[str, ...] = ()
     self_name: str = ""
@@ -198,7 +199,7 @@ def parse(text: str, known: Known) -> Command | None:
     if tail and (tail[0] not in _CONNECT or not any(_known_word(t, known) for t in tail)):
         return None
     words = [t for t in pre + tail if t != ","]
-    if name in known.sites:
+    if name in known.sites and lower not in {a.casefold() for a in (*known.apps, "Claude Code")}:  # apps win
         return Command("site", name, url=known.sites[name], account=_account(words, known))
     if target and lower in _SEARCHABLE:
         close = [w for r in words for w in get_close_matches(r, known.workspaces, 1, THRESHOLD)]
