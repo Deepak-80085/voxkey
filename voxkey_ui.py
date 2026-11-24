@@ -53,7 +53,7 @@ class SoundCue:
             "pipeline_failed": "error",
             "capture_failed": "error",
             "command_succeeded": "complete",
-            "command_failed": "error",
+            "command_failed": "command_error",
         }.get(event.kind)
 
 
@@ -70,7 +70,7 @@ class SoundPlayer:
     def play(self, cue: str | None) -> None:
         if not cue or not self.enabled:
             return
-        if cue == "error":  # no MP3 for this cue: system error beep
+        if cue == "command_error":  # no MP3 for this cue: system error beep
             try:
                 winsound.MessageBeep(winsound.MB_ICONHAND)
             except Exception:

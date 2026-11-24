@@ -40,7 +40,7 @@ and quits VoxKey. No separate Ollama installation or command is required.
 
 ## Voice commands
 
-Hold the hotkey and start with "open" to run a command instead of typing. Everything else is typed as before, and so is "open" followed by a name VoxKey does not know. A command that fails shows a short note and types nothing.
+Hold the hotkey and start with "open" to run a command instead of typing. Everything else is typed as before, and so is "open" followed by a name VoxKey does not know. A command that fails shows a tray notification, plays an error beep, and types nothing.
 
 - Apps: "open Slack", "open T3 Code", "open Claude", "open ChatGPT", "open WhatsApp".
 - Search inside an app: "open the design channel in Slack", "open the Sam chat in WhatsApp", "open the release thread in T3 Code". VoxKey opens the app, types the name into its search box, and presses Enter. In T3 Code it shows the results without pressing Enter.
@@ -59,7 +59,7 @@ Add personal names to `%LOCALAPPDATA%\VoxKey\settings.json`. All keys are option
 }
 ```
 
-`command_words` are extra names the speech model listens for on "open ..." sentences only. `folder_roots` limits where folders are searched; by default VoxKey indexes every fixed drive except the system drive, in memory, and refreshes the list every 15 minutes. The other keys name your Chrome accounts for websites (see limits).
+`command_words` are extra names the speech model listens for on "open ..." sentences only. `folder_roots` limits where folders are searched; by default VoxKey indexes every fixed drive except the system drive, in memory, and refreshes the list every 15 minutes. `workspaces` lists Slack workspace names. `self_name`, `default_account`, `orgs`, and `workspaces` are read once at startup, so restart VoxKey after changing them. `command_words` and `folder_roots` are read live.
 
 Safety: VoxKey types only into a search box it has confirmed through Windows UI Automation, and only while the target window is in front. It never types into message boxes and never sends messages.
 
