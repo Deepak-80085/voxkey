@@ -52,6 +52,7 @@ class Command:
     words: tuple[str, ...] = ()
     phrase: str = field(default="", compare=False)  # all folder words joined, to try as one name ("to do" -> todo)
     run_claude: bool = False
+    heard: str = field(default="", compare=False)  # the account words, for the "Account not clear" note
 
 
 def _tokens(text: str) -> list[str]:
@@ -200,7 +201,7 @@ def parse(text: str, known: Known) -> Command | None:
         return None
     words = [t for t in pre + tail if t != ","]
     if name in known.sites and lower not in {a.casefold() for a in (*known.apps, "Claude Code")}:  # apps win
-        return Command("site", name, url=known.sites[name], account=_account(words, known))
+        return Command("site", name, url=known.sites[name], account=_account(words, known), heard=" ".join(words))
     if target and lower in _SEARCHABLE:
         close = [w for r in words for w in get_close_matches(r, known.workspaces, 1, THRESHOLD)]
         return Command("search", name, target=target, workspace=close[0] if lower == "slack" and close else "")
