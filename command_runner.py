@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -21,6 +22,31 @@ PRESS_ENTER = {"slack", "whatsapp"}
 BOX_WAIT_S, POLL_S = 1.5, 0.05
 NOTHING_TYPED = "Search box not found \u2014 nothing typed"
 NOTHING_SENT = "Search box not found \u2014 nothing sent"
+
+
+SKIP_DIRS = {"node_modules", ".git", "$recycle.bin", "system volume information", "__pycache__",
+             ".venv", "venv", "dist", "build", ".next"}
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.casefold())
+
+
+def find_folders(roots, words) -> list[Path]:
+    """Folders whose normalized name equals the last word and whose path holds the earlier words in order."""
+    *hints, last = [_norm(w) for w in words]
+    found: list[Path] = []
+    # ponytail: full walk each time (E:\ 1.2 s, D:\ 8 s measured); upgrade: a background folder index.
+    for root in roots:
+        for here, dirs, _ in os.walk(root):
+            dirs[:] = [d for d in dirs if d.casefold() not in SKIP_DIRS and not d.startswith(".")]
+            for d in dirs:
+                if _norm(d) != last:
+                    continue
+                parts = iter(_norm(p) for p in Path(here).parts[1:])
+                if all(h in parts for h in hints):  # `in` on an iterator keeps the order
+                    found.append(Path(here, d))
+    return found
 
 
 def drive_root(letter: str) -> Path:
@@ -107,7 +133,7 @@ class CommandRunner:
     def __init__(self, logger=None, known: Known | None = None, start_apps=get_start_apps,
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
                  keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic,
-                 new_window=focus_new, drive_root=drive_root):
+                 new_window=focus_new, drive_root=drive_root, folder_roots=lambda: ()):
         self.logger = logger
         self.known = known or Known()
         self._start_apps = start_apps
@@ -122,6 +148,7 @@ class CommandRunner:
         self._clock = clock
         self._new_window = new_window
         self._drive_root = drive_root
+        self._folder_roots = folder_roots
         self.focused_at: float | None = None  # clock time the app came to the front, for action_ms
         self._apps: list[dict] = []
         self._ready = threading.Event()
@@ -240,13 +267,30 @@ class CommandRunner:
 
     def _terminal(self, command: Command) -> tuple[bool, str]:
         self.focused_at = None
-        if not command.drive:
+        if command.drive:
+            letters = [command.drive]
+        else:
+            letters = [str(r)[:1] for r in self._folder_roots() or () if str(r)[:1].isalpha()]
+        if not letters:
             return False, "Say which drive"
-        root = self._drive_root(command.drive)
-        if not root.is_dir():
-            return False, f"Drive {command.drive.upper()}: not found"
+        roots = [self._drive_root(letter) for letter in letters]
+        for letter, root in zip(letters, roots):
+            if not root.is_dir():
+                return False, f"Drive {letter.upper()}: not found"
         if command.words:
-            return False, "Not supported yet"
+            started = self._clock()
+            matches = sorted(set(find_folders(roots, command.words)))
+            if self.logger:
+                self.logger.info("Folder search; ms=%d; matches=%d", (self._clock() - started) * 1000, len(matches))
+            if not matches:
+                return False, "Folder not found"
+            if len(matches) > 1:
+                return False, "Several folders match: " + "; ".join(str(m) for m in matches[:3])
+            root = matches[0]
+        elif len(roots) == 1:
+            root = roots[0]
+        else:
+            return False, "Say which drive"
         # Only a directory we resolved goes on the command line, never spoken text.
         argv = ["wt.exe", "-w", "new", "-d", str(root)] + (["cmd", "/k", "claude"] if command.run_claude else [])
 

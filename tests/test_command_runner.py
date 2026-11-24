@@ -354,14 +354,22 @@ class TerminalTests(unittest.TestCase):
         self.launch = Mock()
         self.focus_calls = []
 
-    def make(self, focus_ok=True):
+    def make(self, folder_roots=(), focus_ok=True):
         def new_window(name, start):
             start()
             self.focus_calls.append(name)
             return 77 if focus_ok else None
         drives = {"t": self.root}
         return CommandRunner(Mock(), launch=self.launch, new_window=new_window,
+                             folder_roots=lambda: folder_roots,
                              drive_root=lambda letter: drives.get(letter, Path(f"{letter}:/not-here")))
+
+    def mkdirs(self, *paths):
+        for path in paths:
+            (self.root / path).mkdir(parents=True)
+
+    def run_words(self, *words, drive="t", run_claude=False, **kw):
+        return self.make(**kw).run(Command("terminal", "Terminal", drive=drive, words=words, run_claude=run_claude))
 
     def test_drive_only_opens_terminal_there_with_an_argv_list(self):
         ok, detail = self.make().run(Command("terminal", "Terminal", drive="t"))
@@ -391,6 +399,51 @@ class TerminalTests(unittest.TestCase):
         self.launch.side_effect = OSError("no")
         ok, detail = self.make().run(Command("terminal", "Terminal", drive="t"))
         self.assertEqual((ok, detail), (False, "Couldn't open Terminal"))
+
+    def test_folder_words_find_one_folder_ignoring_case_and_underscores(self):
+        self.mkdirs("sudo/clients/bopal/AI_interview", "sudo/other/Zed")
+        ok, _ = self.run_words("clients", "ai interview", run_claude=True)
+        self.assertTrue(ok)
+        self.launch.assert_called_once_with(
+            ["wt.exe", "-w", "new", "-d", str(self.root / "sudo/clients/bopal/AI_interview"), "cmd", "/k", "claude"])
+
+    def test_last_word_must_equal_the_folder_name_not_just_appear_in_it(self):
+        self.mkdirs("clients/AI_interview_old")
+        ok, detail = self.run_words("clients", "ai interview")
+        self.assertEqual((ok, detail), (False, "Folder not found"))
+        self.launch.assert_not_called()
+
+    def test_earlier_words_are_hints_in_order(self):
+        self.mkdirs("alpha/app", "beta/app")
+        self.assertTrue(self.run_words("beta", "app")[0])
+        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root / "beta/app")])
+        self.assertEqual(self.run_words("beta", "alpha", "app")[1], "Folder not found")  # wrong order
+
+    def test_several_matches_fail_and_list_up_to_three(self):
+        self.mkdirs("a/app", "b/app", "c/app", "d/app")
+        ok, detail = self.run_words("app")
+        self.assertFalse(ok)
+        listed = [d for d in "abcd" if str(self.root / d / "app") in detail]
+        self.assertEqual(len(listed), 3)
+        self.launch.assert_not_called()
+
+    def test_skip_list_and_dot_folders_are_not_searched(self):
+        self.mkdirs("node_modules/app", ".git/app", "$RECYCLE.BIN/app", "x/.hidden/app", "x/venv/app", "real/app")
+        self.run_words("app")
+        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root / "real/app")])
+
+    def test_no_drive_searches_the_folder_roots_setting(self):
+        self.mkdirs("proj/voxkey")
+        ok, _ = self.run_words("voxkey", drive="", folder_roots=["t"])
+        self.assertTrue(ok)
+        self.launch.assert_called_once_with(["wt.exe", "-w", "new", "-d", str(self.root / "proj/voxkey")])
+
+    def test_search_time_is_logged(self):
+        self.mkdirs("proj/voxkey")
+        runner_ = self.make()
+        runner_.run(Command("terminal", "Terminal", drive="t", words=("voxkey",)))
+        self.assertIn("ms=", runner_.logger.info.call_args.args[0])
+
 
 
 if __name__ == "__main__":

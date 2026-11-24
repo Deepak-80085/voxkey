@@ -420,7 +420,8 @@ def main() -> None:
         get_foreground_window_handle, logger, events,
         preferred=lambda: runtime.load_settings().get("vocabulary", []),
     )
-    commands = CommandRunner(logger, known_from(settings, read_chrome_state()))
+    commands = CommandRunner(logger, known_from(settings, read_chrome_state()),
+                             folder_roots=lambda: runtime.load_settings().get("folder_roots") or ())
     commands.warm()
     controller = VoxKeyController(
         speech, writer, paste=paste_polished_text, logger=logger, events=events,
