@@ -81,6 +81,27 @@ class VoiceCommandTests(unittest.TestCase):
         self.assertEqual(gmail("in Zed account"), UNKNOWN)
         self.assertEqual(gmail("in Pat acme account"), UNKNOWN)
 
+    def test_only_whole_command_sentences_match(self):
+        for text in ("open slack is down today", "Open the file and send it to Slack",
+                     "Open a new tab and write the email", "Open Claude code review notes tomorrow",
+                     "open the snack bar", "open the black", "open Slack in the morning",
+                     "open to suggestions about Slack", "open the terminal of the problem",
+                     "open Gmail please"):
+            with self.subTest(text):
+                self.assertIsNone(parse(text, KNOWN))
+
+    def test_dictated_command_shapes_stay_commands(self):
+        site = lambda name, url, account=None: Command("site", name, url=url, account=account)
+        cases = {
+            "Open GitHub in my account and grow.": site("GitHub", "https://github.com", "alex.rivera.7@mail.test"),
+            "Open the Gmail in Sam, work again.": site("Gmail", "https://mail.google.com", "sam@acme.test"),
+            "Open WhatsApp and Open Sam Globex Chat.": Command("search", "WhatsApp", target="sam globex"),
+            "Open Claude Code in VoxKey.": Command("terminal", "Terminal", words=("voxkey",), run_claude=True),
+        }
+        for text, expected in cases.items():
+            with self.subTest(text):
+                self.assertEqual(parse(text, KNOWN), expected)
+
 
 if __name__ == "__main__":
     unittest.main()

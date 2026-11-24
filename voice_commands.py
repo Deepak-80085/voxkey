@@ -116,29 +116,79 @@ def _terminal(text: str, run: bool) -> Command:
     return Command("terminal", "Terminal", drive=drive, words=tuple(words), run_claude=run)
 
 
+_CONNECT = {"in", "on", "at", ","}
+_STRONG = 0.85  # below this a name must share its first letter and stand alone ("open slab")
+
+
+def _skip(tokens: list[str]) -> list[str]:
+    n = 0
+    while n < len(tokens) and tokens[n] in _FILLER | {"my"}:
+        n += 1
+    return tokens[n:]
+
+
+def _head(tokens: list[str], names) -> tuple[float, str, int] | None:
+    """Best name at the very start of tokens: (score, name, token count)."""
+    best = None
+    for name in names:
+        words = _tokens(name)
+        score = SequenceMatcher(None, " ".join(tokens[:len(words)]), " ".join(words)).ratio()
+        if score >= THRESHOLD and (best is None or (score, len(words)) > best[:1] + best[2:]):
+            best = (score, name, len(words))
+    return best
+
+
+def _known_word(word: str, known: Known) -> bool:
+    persons = [_who(a) for a in known.accounts] + [known.self_name.casefold()]
+    return (word in ("my", "account", "profile") or bool(get_close_matches(word, list(known.orgs), 1, THRESHOLD))
+            or bool(get_close_matches(word, persons, 1, PERSON_THRESHOLD))
+            or bool(get_close_matches(word, list(known.workspaces), 1, THRESHOLD)))
+
+
 def parse(text: str, known: Known) -> Command | None:
-    """A Command for "open ..." sentences naming something known; None means type it as today."""
-    raw = _tokens(text)
+    """A Command only when the whole sentence is "open NAME [in/on/at ...]"; None means type it as today."""
+    toks = re.findall(r"[a-z0-9]+|,", text.casefold())
+    raw = [t for t in toks if t != ","]
     if not raw or raw[0] != "open":
         return None
-    tokens = [t for t in raw[1:] if t not in _FILLER]
-    target = ""
-    kw = next((i for i, t in enumerate(tokens) if t in _KEYWORDS), None)
-    if kw is not None:  # "open the <target> channel": target = words back to the previous "open"
-        start = max((i + 1 for i in range(kw) if tokens[i] == "open"), default=0)
-        target = " ".join(t for t in tokens[start:kw] if t != "open")
-        tokens = tokens[:start] + tokens[kw + 1:]
-    hit = _find(tokens, [*known.apps, "Claude Code", *known.sites])
-    if not hit:
-        return None
-    name, i, length = hit
-    rest = tokens[:i] + tokens[i + length:]
+    rest = _skip(toks[1:])
+    names = [*known.apps, "Claude Code", *known.sites]
+    target, pre = "", []
+    head = _head(rest, names)
+    if head is None:  # "open [the] <1-4 words> channel in [workspace] NAME"
+        k = next((i for i, t in enumerate(rest[:5]) if t in _KEYWORDS), 0)
+        if not k or "open" in rest[:k] or rest[k + 1:k + 2] != ["in"]:
+            return None
+        target, after = " ".join(rest[:k]), _skip(rest[k + 2:])
+        for j in range(3):
+            if j and not get_close_matches(after[j - 1], list(known.workspaces), 1, THRESHOLD):
+                return None
+            if head := _head(_skip(after[j:]), names):
+                pre, rest = after[:j], _skip(after[j:])
+                break
+        if head is None:
+            return None
+    score, name, length = head
     lower = name.casefold()
+    tail = _skip(rest[length:])
+    if score < _STRONG and (tail or target or rest[0][0] != lower[0]):
+        return None
     if lower in ("claude code", "terminal"):
+        if tail and tail[0] not in _CONNECT:
+            return None
         return _terminal(text, lower == "claude code" or ("run" in raw and "claude" in raw))
+    if tail[:2] == ["and", "open"]:  # "open WhatsApp and open the X chat"
+        more = _skip(tail[2:])
+        k = next((i for i, t in enumerate(more[:5]) if t in _KEYWORDS), 0)
+        if target or lower not in _SEARCHABLE or not k or k != len(more) - 1:
+            return None
+        return Command("search", name, target=" ".join(more[:k]))
+    if tail and (tail[0] not in _CONNECT or not any(_known_word(t, known) for t in tail)):
+        return None
+    words = [t for t in pre + tail if t != ","]
     if name in known.sites:
-        return Command("site", name, url=known.sites[name], account=_account(rest, known))
+        return Command("site", name, url=known.sites[name], account=_account(words, known))
     if target and lower in _SEARCHABLE:
-        close = [w for r in rest for w in get_close_matches(r, known.workspaces, 1, THRESHOLD)]
+        close = [w for r in words for w in get_close_matches(r, known.workspaces, 1, THRESHOLD)]
         return Command("search", name, target=target, workspace=close[0] if lower == "slack" and close else "")
     return Command("app", name)
