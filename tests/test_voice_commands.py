@@ -58,6 +58,8 @@ class VoiceCommandTests(unittest.TestCase):
                 Command("site", "sudo tracker", url="https://tracker.example.test/#home", account="alex@acme.test"),
             "Open the terminal in eDrive, clients folder, in AI interview, run the Claude Code.":
                 Command("terminal", "Terminal", drive="e", words=("clients", "ai interview"), run_claude=True),
+            "Open the terminal in E drive clients folder in AI interview and run the Claude Code":
+                Command("terminal", "Terminal", drive="e", words=("clients", "ai interview"), run_claude=True),
             "Open the beer and review it.": None,
         }
         for text, expected in cases.items():

@@ -22,8 +22,8 @@ _SEARCHABLE = {"slack", "whatsapp", "t3 code"}
 _KEYWORDS = {"channel", "chat", "thread"}
 _FILLER = {"the", "a", "an", "app", "application", "desktop"}
 _ACCOUNT_FILLER = {"in", "on", "at", "of", "and", "again", "account", "profile", "chrome", "open"}
-_FOLDER_FILLER = {"open", "the", "a", "in", "on", "at", "to", "my", "and", "folder", "directory",
-                  "terminal", "claude", "code"}
+_FOLDER_BREAK = {"in", "on", "at", "to", "and", "folder", "directory"}
+_FOLDER_FILLER = _FOLDER_BREAK | {"open", "the", "a", "my", "terminal", "claude", "code"}
 
 
 @dataclass(frozen=True)
@@ -110,9 +110,13 @@ def _terminal(text: str, run: bool) -> Command:
                 tokens[i - 1:i + 1] = ["", ""]
             elif re.fullmatch(r"[a-z]drive", token):
                 drive, tokens[i] = token[0], ""
-        phrase = " ".join(t for t in tokens if t and t not in _FOLDER_FILLER)
-        if phrase:
-            words.append(phrase)
+        phrase = [[]]  # "clients folder in AI interview" (no commas heard) is two folder words
+        for token in tokens:
+            if token in _FOLDER_BREAK:
+                phrase.append([])
+            elif token and token not in _FOLDER_FILLER:
+                phrase[-1].append(token)
+        words += [" ".join(p) for p in phrase if p]
     return Command("terminal", "Terminal", drive=drive, words=tuple(words), run_claude=run)
 
 
