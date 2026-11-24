@@ -17,7 +17,7 @@ class VoiceCommandTests(unittest.TestCase):
     def test_golden_examples(self):
         cases = {
             "Open Slack.": Command("app", "Slack"),
-            "Open the hirefast channel in the Slack.": Command("search", "Slack", target="hirefast"),
+            "Open the roadmap channel in the Slack.": Command("search", "Slack", target="roadmap"),
             "Open the general channel in Globex Slack.":
                 Command("search", "Slack", target="general", workspace="globex"),
             "Open my sudo tracker in my work Chrome.":

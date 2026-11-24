@@ -191,10 +191,10 @@ class SearchTests(unittest.TestCase):
         return "".join(e[1] for e in fake.events if e[0] == "type")
 
     def test_slack_types_the_name_into_the_confirmed_box_then_presses_enter(self):
-        (ok, detail), fake = self._run(Command("search", "Slack", target="hirefast"))
-        self.assertEqual((ok, detail), (True, "Searched Slack for hirefast"))
+        (ok, detail), fake = self._run(Command("search", "Slack", target="roadmap"))
+        self.assertEqual((ok, detail), (True, "Searched Slack for roadmap"))
         self.assertEqual(fake.events[0], ("chord", "ctrl", "k"))
-        self.assertEqual(self._typed(fake), "hirefast")
+        self.assertEqual(self._typed(fake), "roadmap")
         self.assertEqual(fake.events[-1], ("tap", "enter"))
         self.assertEqual(fake.composer, "")
 
@@ -206,28 +206,28 @@ class SearchTests(unittest.TestCase):
         self.assertNotIn(("tap", "enter"), fake.events)
 
     def test_whatsapp_clears_a_stray_slash_before_typing(self):
-        (ok, _), fake = self._run(Command("search", "WhatsApp", target="Puneet Jigsaw"), stray="/")
+        (ok, _), fake = self._run(Command("search", "WhatsApp", target="Sam Globex"), stray="/")
         self.assertTrue(ok)
         self.assertEqual(fake.events[:3], [("chord", "ctrl", "alt", "/"), ("chord", "ctrl", "a"),
                                            ("tap", "backspace")])
-        self.assertEqual(fake.value, "Puneet Jigsaw")
+        self.assertEqual(fake.value, "Sam Globex")
         self.assertEqual(fake.events[-1], ("tap", "enter"))
 
     def test_box_is_cleared_even_when_it_reads_empty(self):
         # Measured: WhatsApp's "/" lands ~0.1 s after UI Automation already read the new box as empty.
-        _, fake = self._run(Command("search", "WhatsApp", target="Puneet"))
+        _, fake = self._run(Command("search", "WhatsApp", target="Sam"))
         self.assertEqual(fake.events[1:3], [("chord", "ctrl", "a"), ("tap", "backspace")])
-        self.assertEqual(self._typed(fake), "Puneet")
+        self.assertEqual(self._typed(fake), "Sam")
 
     def test_dropped_shortcut_types_nothing_and_presses_escape(self):
         # The review finding: shortcut lost -> the name went to the message box and Enter sent it.
-        (ok, detail), fake = self._run(Command("search", "Slack", target="hirefast"), opens=False)
+        (ok, detail), fake = self._run(Command("search", "Slack", target="roadmap"), opens=False)
         self.assertEqual((ok, detail), (False, "Search box not found — nothing typed"))
         self.assertEqual(fake.events, [("chord", "ctrl", "k"), ("tap", "esc")])
         self.assertEqual(fake.composer, "")
 
     def test_wrong_shortcut_types_nothing(self):
-        (ok, detail), fake = self._run(Command("search", "Slack", target="hirefast"), shortcut=("f13",))
+        (ok, detail), fake = self._run(Command("search", "Slack", target="roadmap"), shortcut=("f13",))
         self.assertEqual(detail, "Search box not found — nothing typed")
         self.assertEqual(self._typed(fake), "")
 
@@ -236,13 +236,13 @@ class SearchTests(unittest.TestCase):
         self.assertLessEqual(self.now[0], 1.6)
 
     def test_box_value_not_matching_the_name_sends_no_enter(self):
-        (ok, detail), fake = self._run(Command("search", "Slack", target="hirefast"), echo=False)
+        (ok, detail), fake = self._run(Command("search", "Slack", target="roadmap"), echo=False)
         self.assertEqual((ok, detail), (False, "Search box not found — nothing sent"))
         self.assertNotIn(("tap", "enter"), fake.events)
         self.assertEqual(fake.events[-1], ("tap", "esc"))
 
     def test_focus_lost_mid_sequence_sends_no_more_keys(self):
-        (ok, detail), fake = self._run(Command("search", "Slack", target="hirefast"), lose_after=3)
+        (ok, detail), fake = self._run(Command("search", "Slack", target="roadmap"), lose_after=3)
         self.assertFalse(ok)
         self.assertEqual(detail, "Couldn't focus Slack — nothing typed")
         self.assertEqual(len(fake.events), 3)
@@ -264,7 +264,7 @@ class SearchTests(unittest.TestCase):
 
     def test_error_mid_sequence_releases_modifiers(self):
         with self.assertRaises(RuntimeError):
-            self._run(Command("search", "Slack", target="hirefast"), raise_on=("type", "r"))
+            self._run(Command("search", "Slack", target="roadmap"), raise_on=("type", "r"))
         self.assertTrue(self.runner._keys.released)
 
     def test_window_not_focused_sends_nothing(self):
