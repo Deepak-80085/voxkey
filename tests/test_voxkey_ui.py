@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 from pathlib import Path
 
 from voxkey_events import UiEvent
@@ -107,6 +108,45 @@ class VoxKeyUiTests(unittest.TestCase):
         self.assertNotIn('Ready for local dictation', shell.health.text())
         shell.close()
         app.quit()
+
+    def test_personal_memory_dialog_saves_a_reviewed_correction(self):
+        from unittest.mock import Mock
+        from PySide6.QtWidgets import QCheckBox, QLineEdit, QPushButton, QTabWidget
+        from personal_memory import PersonalMemory
+        from voxkey_ui import VoxKeyShell, create_qt_application
+
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            memory.remember_output("Open vox key.", "notepad.exe")
+            memory.suggest_correction("cash", "cache", "notepad.exe")
+            runtime = Mock()
+            runtime.load_settings.return_value = {"sounds_enabled": False, "vocabulary": []}
+            runtime.logger.return_value = Mock()
+            app = create_qt_application()
+            shell = VoxKeyShell(Mock(), runtime, lambda: None, memory=memory)
+            self.assertTrue(any("Learn from edits" in item.text()
+                                for item in shell.settings.findChildren(QCheckBox)))
+            shell.show_memory()
+
+            tabs = shell.memory_dialog.findChild(QTabWidget)
+            self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ["Corrections", "Snippets", "App styles"])
+            fields = shell.memory_dialog.findChildren(QLineEdit)
+            next(field for field in fields if field.placeholderText() == "Phrase VoxKey heard").setText("vox key")
+            next(field for field in fields if field.placeholderText() == "What you intended").setText("VoxKey")
+            next(button for button in shell.memory_dialog.findChildren(QPushButton) if button.text() == "Remember correction").click()
+
+            self.assertEqual(memory.correct("open vox key", "notepad.exe"), "open VoxKey")
+            self.assertEqual(memory.correct("open vox key", "browser.exe"), "open vox key")
+            from PySide6.QtWidgets import QListWidget
+            review_list = next(item for item in shell.memory_dialog.findChildren(QListWidget)
+                               if item.count() and "cash → cache" in item.item(0).text())
+            review_list.setCurrentRow(0)
+            next(button for button in shell.memory_dialog.findChildren(QPushButton)
+                 if button.text() == "Remember selected edit").click()
+            self.assertEqual(memory.correct("cash", "notepad.exe"), "cache")
+            self.assertEqual(memory.list_suggestions(), [])
+            shell.close()
+            app.quit()
 
 
 if __name__ == "__main__":

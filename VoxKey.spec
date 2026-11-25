@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # faster-whisper loads this VAD ONNX model by package-relative path at runtime.
 datas = [('asset', 'asset')] + collect_data_files(
@@ -13,7 +13,8 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
-        'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets', 'PySide6.QtMultimedia'
+        'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets', 'PySide6.QtMultimedia',
+        *collect_submodules('comtypes.gen'),
     ],
     hookspath=[],
     hooksconfig={},

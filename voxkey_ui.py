@@ -11,9 +11,9 @@ from pathlib import Path
 from PySide6.QtCore import QEasingCurve, QPoint, Property, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QLabel, QMenu, QPlainTextEdit,
-    QPushButton, QSystemTrayIcon,
-    QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QLabel, QLineEdit, QListWidget,
+    QMessageBox, QMenu, QPlainTextEdit, QPushButton, QSystemTrayIcon,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 from voxkey_events import UiEvent
@@ -215,6 +215,11 @@ class SettingsActions:
         if self._set_autostart:
             self._set_autostart(bool(enabled))
 
+    def set_learn_from_edits(self, enabled: bool) -> None:
+        settings = dict(self.runtime.load_settings())
+        settings["learn_from_edits"] = bool(enabled)
+        self.runtime.save_settings(settings)
+
     def set_vocabulary(self, text: str) -> None:
         settings = dict(self.runtime.load_settings())
         settings["vocabulary"] = normalize_vocabulary(text.splitlines())
@@ -238,10 +243,13 @@ class VoxKeyShell:
         hotkeys=(),
         set_hotkey=None,
         set_autostart=None,
+        memory=None,
     ) -> None:
         self.controller, self.runtime, self.shutdown = controller, runtime, shutdown
         self.microphones = microphones
         self.hotkeys = hotkeys
+        self.memory = memory
+        self.memory_dialog = None
         self.hud = VoxKeyHud()
         self.sounds = SoundPlayer(runtime.load_settings()["sounds_enabled"], runtime.logger())
         self.actions = SettingsActions(
@@ -256,6 +264,8 @@ class VoxKeyShell:
         self.tray = QSystemTrayIcon(self.icon)
         menu = QMenu()
         menu.addAction("Open settings", self.show_settings)
+        memory_action = menu.addAction("Personal memory", self.show_memory)
+        memory_action.setEnabled(memory is not None)
         self.sound_action = menu.addAction("Sounds on")
         self.sound_action.setCheckable(True)
         self.sound_action.setChecked(self.sounds.enabled)
@@ -310,6 +320,14 @@ class VoxKeyShell:
             lambda: self.actions.set_vocabulary(vocabulary.toPlainText())
         )
         layout.addWidget(save_vocabulary)
+        if self.memory is not None:
+            personal = QPushButton("Corrections and history")
+            personal.clicked.connect(self.show_memory)
+            layout.addWidget(personal)
+            learn = QCheckBox("Learn from edits to recent dictation (2 minutes)")
+            learn.setChecked(bool(self.runtime.load_settings().get("learn_from_edits")))
+            learn.toggled.connect(self.actions.set_learn_from_edits)
+            layout.addWidget(learn)
         checkbox = QCheckBox("Play voice feedback sounds")
         checkbox.setChecked(self.sounds.enabled)
         checkbox.toggled.connect(self.actions.set_sounds_enabled)
@@ -333,6 +351,279 @@ class VoxKeyShell:
         self.settings.raise_()
         self.settings.activateWindow()
 
+    def show_memory(self) -> None:
+        if self.memory is None:
+            return
+        if self.memory_dialog:
+            self.memory_dialog.close()
+            self.memory_dialog.deleteLater()
+        dialog = QDialog(self.settings)
+        dialog.setWindowTitle("VoxKey personal memory")
+        dialog.setWindowIcon(self.icon)
+        layout = QVBoxLayout(dialog)
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
+        corrections_page = QWidget()
+        tabs.addTab(corrections_page, "Corrections")
+        layout = QVBoxLayout(corrections_page)
+        if self.memory.load_error:
+            layout.addWidget(QLabel("Memory file could not be read. Open diagnostics to inspect it."))
+        layout.addWidget(QLabel("Recent dictations stay on this PC. Select one to correct a phrase."))
+        history = self.memory.history()
+        recent = QListWidget()
+        recent.setFixedHeight(100)
+        for item in history:
+            recent.addItem(item["text"].replace("\n", " ")[:120])
+        layout.addWidget(recent)
+        preview = QPlainTextEdit()
+        preview.setReadOnly(True)
+        preview.setFixedHeight(80)
+        layout.addWidget(preview)
+        scope = QComboBox()
+        heard = QLineEdit()
+        intended = QLineEdit()
+        heard.setPlaceholderText("Phrase VoxKey heard")
+        intended.setPlaceholderText("What you intended")
+        layout.addWidget(heard)
+        layout.addWidget(intended)
+        layout.addWidget(scope)
+
+        def select_output(index: int) -> None:
+            item = history[index] if 0 <= index < len(history) else None
+            preview.setPlainText(item["text"] if item else "")
+            scope.clear()
+            if item and item.get("app"):
+                scope.addItem(f"Only {item['app']}", item["app"])
+            scope.addItem("All apps", None)
+
+        recent.currentRowChanged.connect(select_output)
+        select_output(0 if history else -1)
+        if history:
+            recent.setCurrentRow(0)
+        corrections = QListWidget()
+        corrections.setFixedHeight(100)
+
+        def refresh_rules() -> None:
+            corrections.clear()
+            for rule in self.memory.list_corrections():
+                scope_label = rule.get("app") or "all apps"
+                origin = ", learned from edit" if rule.get("source") == "edit" else ""
+                corrections.addItem(f"{rule['heard']} → {rule['intended']} ({scope_label}{origin})")
+
+        def save_rule() -> None:
+            try:
+                self.memory.add_correction(heard.text(), intended.text(), scope.currentData())
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(dialog, "Correction not saved", str(exc))
+                return
+            heard.clear()
+            intended.clear()
+            refresh_rules()
+
+        save = QPushButton("Remember correction")
+        save.clicked.connect(save_rule)
+        layout.addWidget(save)
+        layout.addWidget(QLabel("Saved corrections"))
+        refresh_rules()
+        layout.addWidget(corrections)
+
+        suggestions = QListWidget()
+        suggestions.setFixedHeight(85)
+
+        def refresh_suggestions() -> None:
+            suggestions.clear()
+            for item in self.memory.list_suggestions():
+                suggestions.addItem(f"{item['heard']} → {item['intended']} ({item.get('app') or 'all apps'})")
+
+        layout.addWidget(QLabel("Edits to review"))
+        refresh_suggestions()
+        layout.addWidget(suggestions)
+        refresh = QPushButton("Refresh suggested edits")
+        refresh.clicked.connect(refresh_suggestions)
+        layout.addWidget(refresh)
+
+        def selected_suggestion():
+            items = self.memory.list_suggestions()
+            index = suggestions.currentRow()
+            return items[index] if 0 <= index < len(items) else None
+
+        def accept_suggestion() -> None:
+            item = selected_suggestion()
+            if item is None:
+                return
+            try:
+                self.memory.accept_suggestion(item["heard"], item["intended"], item.get("app"))
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(dialog, "Suggestion not accepted", str(exc))
+                return
+            refresh_suggestions()
+            refresh_rules()
+
+        def discard_suggestion() -> None:
+            item = selected_suggestion()
+            if item is None:
+                return
+            try:
+                self.memory.delete_suggestion(item["heard"], item["intended"], item.get("app"))
+            except OSError as exc:
+                QMessageBox.warning(dialog, "Suggestion not deleted", str(exc))
+                return
+            refresh_suggestions()
+
+        accept = QPushButton("Remember selected edit")
+        accept.clicked.connect(accept_suggestion)
+        layout.addWidget(accept)
+        discard = QPushButton("Dismiss selected edit")
+        discard.clicked.connect(discard_suggestion)
+        layout.addWidget(discard)
+
+        def delete_rule() -> None:
+            index = corrections.currentRow()
+            rules = self.memory.list_corrections()
+            if 0 <= index < len(rules):
+                rule = rules[index]
+                try:
+                    self.memory.delete_correction(rule["heard"], rule.get("app"))
+                except OSError as exc:
+                    QMessageBox.warning(dialog, "Correction not deleted", str(exc))
+                    return
+                refresh_rules()
+
+        remove = QPushButton("Delete selected correction")
+        remove.clicked.connect(delete_rule)
+        layout.addWidget(remove)
+
+        def clear_history() -> None:
+            try:
+                self.memory.clear_history()
+            except OSError as exc:
+                QMessageBox.warning(dialog, "History not cleared", str(exc))
+                return
+            history.clear()
+            recent.clear()
+            select_output(-1)
+
+        clear = QPushButton("Clear dictation history")
+        clear.clicked.connect(clear_history)
+        layout.addWidget(clear)
+
+        snippets_page = QWidget()
+        tabs.addTab(snippets_page, "Snippets")
+        snippet_layout = QVBoxLayout(snippets_page)
+        snippet_layout.addWidget(QLabel("Say a cue by itself to paste its saved text."))
+        cue = QLineEdit()
+        cue.setPlaceholderText("Spoken cue, for example my meeting link")
+        expansion = QPlainTextEdit()
+        expansion.setPlaceholderText("Text to paste")
+        snippet_layout.addWidget(cue)
+        snippet_layout.addWidget(expansion)
+        snippets = QListWidget()
+
+        def refresh_snippets() -> None:
+            snippets.clear()
+            for item in self.memory.list_snippets():
+                snippets.addItem(item["cue"])
+
+        def save_snippet() -> None:
+            try:
+                self.memory.add_snippet(cue.text(), expansion.toPlainText())
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(dialog, "Snippet not saved", str(exc))
+                return
+            cue.clear()
+            expansion.clear()
+            refresh_snippets()
+
+        save_snippet_button = QPushButton("Save snippet")
+        save_snippet_button.clicked.connect(save_snippet)
+        snippet_layout.addWidget(save_snippet_button)
+        refresh_snippets()
+        snippet_layout.addWidget(snippets)
+
+        def select_snippet(index: int) -> None:
+            items = self.memory.list_snippets()
+            if 0 <= index < len(items):
+                cue.setText(items[index]["cue"])
+                expansion.setPlainText(items[index]["text"])
+
+        snippets.currentRowChanged.connect(select_snippet)
+
+        def delete_snippet() -> None:
+            index = snippets.currentRow()
+            items = self.memory.list_snippets()
+            if 0 <= index < len(items):
+                try:
+                    self.memory.delete_snippet(items[index]["cue"])
+                except OSError as exc:
+                    QMessageBox.warning(dialog, "Snippet not deleted", str(exc))
+                    return
+                refresh_snippets()
+
+        remove_snippet = QPushButton("Delete selected snippet")
+        remove_snippet.clicked.connect(delete_snippet)
+        snippet_layout.addWidget(remove_snippet)
+
+        styles_page = QWidget()
+        tabs.addTab(styles_page, "App styles")
+        style_layout = QVBoxLayout(styles_page)
+        style_layout.addWidget(QLabel("Choose how VoxKey formats dictation in one app."))
+        style_app = QLineEdit()
+        style_app.setPlaceholderText("App name, for example notepad.exe")
+        if history and history[0].get("app"):
+            style_app.setText(history[0]["app"])
+        style_choice = QComboBox()
+        for style in self.memory.STYLES:
+            style_choice.addItem(style.title(), style)
+        style_layout.addWidget(style_app)
+        style_layout.addWidget(style_choice)
+        styles = QListWidget()
+
+        def refresh_styles() -> None:
+            styles.clear()
+            for app, style in sorted(self.memory.styles().items()):
+                styles.addItem(f"{app}: {style}")
+
+        def save_style() -> None:
+            try:
+                self.memory.set_style(style_app.text(), style_choice.currentData())
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(dialog, "Style not saved", str(exc))
+                return
+            refresh_styles()
+
+        save_style_button = QPushButton("Save app style")
+        save_style_button.clicked.connect(save_style)
+        style_layout.addWidget(save_style_button)
+        refresh_styles()
+        style_layout.addWidget(styles)
+
+        def select_style(index: int) -> None:
+            items = sorted(self.memory.styles().items())
+            if 0 <= index < len(items):
+                app, style = items[index]
+                style_app.setText(app)
+                style_choice.setCurrentIndex(style_choice.findData(style))
+
+        styles.currentRowChanged.connect(select_style)
+
+        def delete_style() -> None:
+            index = styles.currentRow()
+            apps = sorted(self.memory.styles())
+            if 0 <= index < len(apps):
+                try:
+                    self.memory.set_style(apps[index], "standard")
+                except OSError as exc:
+                    QMessageBox.warning(dialog, "Style not reset", str(exc))
+                    return
+                refresh_styles()
+
+        remove_style = QPushButton("Reset selected app")
+        remove_style.clicked.connect(delete_style)
+        style_layout.addWidget(remove_style)
+        dialog.resize(480, 730)
+        dialog.show()
+        self.memory_dialog = dialog
+
     def handle_event(self, event: UiEvent) -> None:
         if should_render_hud(event):
             self.hud.show_event(event)
@@ -347,6 +638,8 @@ class VoxKeyShell:
 
     def close(self) -> None:
         self.hud.hide()
+        if self.memory_dialog:
+            self.memory_dialog.hide()
         self.settings.hide()
         self.tray.hide()
 

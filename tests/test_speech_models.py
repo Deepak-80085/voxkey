@@ -101,6 +101,42 @@ class SpeechModelTests(unittest.TestCase):
         self.assertEqual(downloader.call_args.kwargs["repo_id"], "Systran/faster-whisper-small.en")
         self.assertEqual(downloader.call_args.kwargs["local_dir"], str(self.model_dir))
 
+    def test_personal_distilled_model_uses_separate_local_directory_and_int8_gpu(self):
+        distilled_dir = self.model_dir.parent / "speech-distil-large-v3"
+        distilled_dir.mkdir()
+        (distilled_dir / "model.bin").write_bytes(b"valid model")
+        loader = Mock(return_value=Mock())
+        manager = SpeechModelManager(
+            self.runtime,
+            model_name="distil-large-v3",
+            model_loader=loader,
+            cuda_checker=lambda: [],
+        )
+
+        status = manager.health_check()
+
+        self.assertTrue(status.ready)
+        self.assertEqual(status.device, "cuda")
+        self.assertEqual(loader.call_args.kwargs["model_size_or_path"], str(distilled_dir))
+        self.assertEqual(loader.call_args.kwargs["compute_type"], "int8")
+
+    def test_personal_distilled_model_download_uses_pinned_repository_name(self):
+        downloader = Mock()
+        manager = SpeechModelManager(
+            self.runtime, model_name="distil-large-v3", downloader=downloader
+        )
+
+        manager._ensure_model()
+
+        self.assertEqual(
+            downloader.call_args.kwargs["repo_id"],
+            "Systran/faster-distil-whisper-large-v3",
+        )
+        self.assertEqual(
+            downloader.call_args.kwargs["local_dir"],
+            str(self.model_dir.parent / "speech-distil-large-v3"),
+        )
+
     def test_model_download_disables_console_progress_for_frozen_gui(self):
         (self.model_dir / 'model.bin').unlink()
 
