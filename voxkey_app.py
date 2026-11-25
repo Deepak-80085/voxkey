@@ -18,6 +18,7 @@ import pyperclip
 import sounddevice as sd
 from pynput import keyboard
 
+from command_runner import CommandRunner, known_from, read_chrome_state
 from ollama_runtime import ManagedOllamaRuntime
 from personal_memory import PersonalMemory
 from edit_learning import EditLearningWatcher
@@ -307,6 +308,7 @@ class HoldToDictateService:
             self.ignore_cycle = True
 
     def _release(self, key) -> None:
+        released_at = time.monotonic()  # action_ms starts here
         if key != self.trigger_key:
             return
         self.hotkey_down = False
@@ -325,7 +327,7 @@ class HoldToDictateService:
         try:
             audio_path = self.recorder.stop_and_save()
             self.logger.info("Recording saved: %s; target=%s", audio_path, target_hwnd)
-            self.jobs.put((audio_path, target_hwnd, target_app))
+            self.jobs.put((audio_path, target_hwnd, target_app, released_at))
             self._emit("capture_stopped", AppState.TRANSCRIBING)
         except Exception as exc:
             self.logger.exception("Recording stop failed")
@@ -366,11 +368,12 @@ class HoldToDictateService:
             job = self.jobs.get()
             if job is None:
                 return
-            audio_path, target_hwnd, target_app = job
+            audio_path, target_hwnd, target_app, released_at = job
             try:
                 self.logger.info("Processing recording: %s", audio_path)
-                pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd, app=target_app)
-                self.logger.info("Recording processed; pasted=%s", pasted)
+                pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd, app=target_app,
+                                                       released_at=released_at)
+                self.logger.info("Recording handled; success=%s", pasted)
             except Exception:
                 self.logger.exception("Unexpected worker failure")
             finally:
@@ -389,6 +392,11 @@ def dispatch_ui_events(events: EventBus, shell: VoxKeyShell) -> None:
         shell.handle_event(event)
 
 
+def command_words(settings: dict) -> list[str]:
+    words = settings.get("command_words")
+    return [w for w in words if isinstance(w, str)] if isinstance(words, list) else []
+
+
 def main() -> None:
     if not claim_single_instance():
         notify_already_running()
@@ -402,6 +410,7 @@ def main() -> None:
     speech = SpeechModelManager(
         runtime,
         vocabulary_provider=lambda: runtime.load_settings()["vocabulary"],
+        command_words_provider=lambda: command_words(runtime.load_settings()),
         model_name=settings.get("speech_model", "small.en"),
     )
     cuda_runtime = ManagedOllamaRuntime(runtime)
@@ -415,9 +424,13 @@ def main() -> None:
         get_foreground_window_handle, logger, events,
         preferred=lambda: runtime.load_settings().get("vocabulary", []),
     )
+    commands = CommandRunner(logger, known_from(settings, read_chrome_state()),
+                             folder_roots=lambda: runtime.load_settings().get("folder_roots") or ())
+    commands.warm()
     controller = VoxKeyController(
         speech, writer, paste=paste_polished_text, logger=logger, events=events,
         memory=memory, edit_watcher=edit_watcher, prepare_runtime=cuda_runtime.ensure_ready,
+        commands=commands,
     )
     threading.Thread(target=controller.start, daemon=True).start()
     service = HoldToDictateService(controller, runtime, logger=logger, events=events)

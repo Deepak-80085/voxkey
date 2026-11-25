@@ -26,3 +26,5 @@ benchmark/local_samples/
 Thumbs.db
 .vscode/
 .idea/
+DECISIONS.md
+PLAN.md

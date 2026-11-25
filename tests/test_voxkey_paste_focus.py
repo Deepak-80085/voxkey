@@ -1,7 +1,14 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from voxkey_app import paste_polished_text, restore_foreground_window_handle
+from voxkey_app import command_words, paste_polished_text, restore_foreground_window_handle
+
+
+class CommandWordsTests(unittest.TestCase):
+    def test_only_a_list_of_strings_counts(self):
+        self.assertEqual(command_words({"command_words": ["Acme", 3, "Sam"]}), ["Acme", "Sam"])
+        self.assertEqual(command_words({"command_words": "Acme"}), [])
+        self.assertEqual(command_words({}), [])
 
 
 class VoxKeyPasteFocusTests(unittest.TestCase):
@@ -37,9 +44,10 @@ class VoxKeyPasteFocusTests(unittest.TestCase):
         service.paste_target_app = "notepad.exe"
         service.recorder.stop_and_save = Mock(return_value="recording.wav")
 
-        service._release(__import__("pynput").keyboard.Key.ctrl_r)
+        with patch("voxkey_app.time.monotonic", return_value=77.5):
+            service._release(__import__("pynput").keyboard.Key.ctrl_r)
 
-        self.assertEqual(service.jobs.get_nowait(), ("recording.wav", 1234, "notepad.exe"))
+        self.assertEqual(service.jobs.get_nowait(), ("recording.wav", 1234, "notepad.exe", 77.5))
 
     def test_restore_foreground_window_uses_windows_focus_api(self):
         user32 = Mock()

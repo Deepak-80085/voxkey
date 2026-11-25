@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import sys
 import threading
+import winsound
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,6 +52,8 @@ class SoundCue:
             "paste_succeeded": "complete",
             "pipeline_failed": "error",
             "capture_failed": "error",
+            "command_succeeded": "complete",
+            "command_failed": "command_error",
         }.get(event.kind)
 
 
@@ -66,6 +69,12 @@ class SoundPlayer:
 
     def play(self, cue: str | None) -> None:
         if not cue or not self.enabled:
+            return
+        if cue == "command_error":  # no MP3 for this cue: system error beep
+            try:
+                winsound.MessageBeep(winsound.MB_ICONHAND)
+            except Exception:
+                pass
             return
         filename = self._SOUND_FILES.get(cue)
         if not filename or sys.platform != "win32":
@@ -629,6 +638,8 @@ class VoxKeyShell:
             self.hud.show_event(event)
         cue = SoundCue.for_event(event)
         self.sounds.play(cue)
+        if event.kind == "command_failed":
+            self.tray.showMessage("VoxKey", event.detail or "Command failed", QSystemTrayIcon.MessageIcon.Warning, 4000)
         if event.kind == "state_changed" and event.state:
             detail = event.detail or {
                 AppState.VALIDATING: "Preparing local models. First launch may take a few minutes.",

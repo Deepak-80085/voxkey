@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Callable
 from voxkey_events import EventBus, UiEvent
 from voxkey_runtime import AppState
 from writing_model import WritingModelUnavailable
+
+_OPEN = re.compile(r"\W*open\b", re.IGNORECASE)
 
 
 class VoxKeyController:
@@ -25,6 +28,7 @@ class VoxKeyController:
         memory=None,
         edit_watcher=None,
         prepare_runtime: Callable[[Callable[[str], None]], None] | None = None,
+        commands=None,
     ):
         self.speech = speech
         self.logger = logger
@@ -36,6 +40,7 @@ class VoxKeyController:
         self.memory = memory
         self.edit_watcher = edit_watcher
         self.prepare_runtime = prepare_runtime
+        self.commands = commands
         self.state = AppState.STARTING
         self.reason = None
         self._validation_lock = threading.Lock()
@@ -85,10 +90,37 @@ class VoxKeyController:
         finally:
             self._validation_lock.release()
 
+    def _run_command(self, transcript: str, since: float, released_at: float | None = None) -> bool | None:
+        """None: not a command. Otherwise whether it worked; either way nothing is pasted."""
+        try:
+            command = self.commands.parse(transcript)
+        except Exception:
+            if self.logger:
+                self.logger.exception("Command parsing failed; typing the text instead")
+            return None
+        if command is None:
+            return None
+        try:
+            ok, detail = self.commands.run(command)
+        except Exception as exc:
+            ok, detail = False, str(exc) or "Command failed"
+            if self.logger:
+                self.logger.exception("Command failed")
+        command_ms = round((self.clock() - since) * 1000)
+        if self.logger:
+            self.logger.info("Command completed; success=%s; command_ms=%d", ok, command_ms)
+            if released_at is not None:
+                focused_at = getattr(self.commands, "focused_at", None)
+                action_ms = round((focused_at - released_at) * 1000) if focused_at is not None else None
+                self.logger.info("Command action; action_ms=%s", action_ms)  # key release -> app in front
+        self._emit("command_succeeded" if ok else "command_failed", AppState.READY, detail, command_ms)
+        return ok
+
     def can_dictate(self) -> bool:
         return self.state is AppState.READY
 
-    def process_audio(self, audio_path: Path, target_hwnd=None, app: str | None = None) -> bool:
+    def process_audio(self, audio_path: Path, target_hwnd=None, app: str | None = None,
+                      released_at: float | None = None) -> bool:
         if self.state not in (AppState.READY, AppState.LISTENING):
             return False
         if self.edit_watcher:
@@ -116,6 +148,31 @@ class VoxKeyController:
                 except Exception:
                     if self.logger:
                         self.logger.exception("Local correction memory unavailable")
+
+            outcome = None
+            if self.commands and _OPEN.match(transcript):
+                # Only "open ..." sentences get a second pass with the command names in the prompt.
+                second_started = time.perf_counter()
+                try:
+                    second = self.speech.transcribe(audio_path, command_terms=True)
+                except Exception:
+                    second = None  # keep the first transcript; it is typed as before
+                    if self.logger:
+                        self.logger.exception("Command second pass failed; typing the first transcript")
+                if second is not None:
+                    if self.memory:
+                        try:
+                            second = self.memory.correct(second, app)
+                        except Exception:
+                            if self.logger:
+                                self.logger.exception("Local correction memory unavailable")
+                    if self.logger:
+                        self.logger.info("Command second pass; elapsed_ms=%d",
+                                         round((time.perf_counter() - second_started) * 1000))
+                    outcome = self._run_command(second, transcribe_finished, released_at)
+            if outcome is not None:
+                self._set_state(AppState.READY)
+                return outcome
 
             self._emit("polishing", AppState.POLISHING)
             self._set_state(AppState.POLISHING)

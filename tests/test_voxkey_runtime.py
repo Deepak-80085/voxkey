@@ -26,6 +26,7 @@ class VoxKeyRuntimeTests(unittest.TestCase):
         self.assertEqual(settings["speech_model"], "small.en")
         self.assertNotIn("base.en", str(settings))
         self.assertNotIn("ollama_model", settings)
+        self.assertEqual(settings["command_words"], [])
 
     def test_saves_and_loads_settings_from_voxkey_data_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:

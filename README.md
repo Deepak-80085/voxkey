@@ -38,6 +38,33 @@ and quits VoxKey. No separate Ollama installation or command is required.
 
 > Releases may be unsigned until a trusted signing configuration is available. Unsigned Windows builds can be blocked by Smart App Control or SmartScreen; always verify the release checksum and read the release security notice.
 
+## Voice commands
+
+Hold the hotkey and start with "open" to run a command instead of typing. Everything else is typed as before, and so is "open" followed by a name VoxKey does not know. A command that fails shows a tray notification, plays an error beep, and types nothing.
+
+- Apps: "open Slack", "open T3 Code", "open Claude", "open ChatGPT", "open WhatsApp".
+- Search inside an app: "open the design channel in Slack", "open the Sam chat in WhatsApp", "open the release thread in T3 Code". VoxKey opens the app, types the name into its search box, and presses Enter. In T3 Code it shows the results without pressing Enter.
+- Terminal: "open the terminal in D drive", "open Claude Code in myproject" (finds a folder by name and starts `claude` there), "open the terminal in E drive, clients folder, demo, and run Claude Code".
+
+Add personal names to `%LOCALAPPDATA%\VoxKey\settings.json`. All keys are optional; the values below are examples.
+
+```json
+{
+  "self_name": "alex",
+  "default_account": "alex@example.com",
+  "orgs": {"work": "example.com"},
+  "workspaces": ["example"],
+  "command_words": ["Acme", "Sam"],
+  "folder_roots": ["D:\\", "E:\\"]
+}
+```
+
+`command_words` are extra names the speech model listens for on "open ..." sentences only. `folder_roots` limits where folders are searched; by default VoxKey indexes every fixed drive except the system drive, in memory, and refreshes the list every 15 minutes. `workspaces` lists Slack workspace names. `self_name`, `default_account`, `orgs`, and `workspaces` are read once at startup, so restart VoxKey after changing them. `command_words` is read live. `folder_roots` is read when the folder list is rebuilt (every 15 minutes), so restart VoxKey to apply a change now.
+
+Safety: VoxKey types only into a search box it has confirmed through Windows UI Automation, and only while the target window is in front. It never types into message boxes and never sends messages.
+
+Limits: switching Slack workspaces is not supported yet, and websites and Chrome profiles ("open YouTube in my work account") are not supported yet.
+
 ## Limitations
 
 - Windows secure-desktop screens (lock screen, UAC prompts, Ctrl+Alt+Del) cannot accept dictation.

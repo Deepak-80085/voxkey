@@ -10,12 +10,11 @@ captured window (`voxkey_app.py`). The hotkey and worker publish events; the Qt
 shell in `voxkey_ui.py` owns the tray and settings. Runtime state is under
 `%LOCALAPPDATA%\VoxKey` (`voxkey_runtime.py`).
 
-The writer preserves recognized word order and spelling. It uses a direct local
-path for explicit formatting commands, long speech, and speech already
-formatted by the recognizer. Other short speech goes to VoxKey's loopback
-Ollama writer and falls back to a deterministic formatter if the result changes
-words. Neither path can infer what the user intended when speech recognition
-hears a different word.
+The writer preserves recognized word order and spelling. It is rule-based only
+(`TextFormatter` in `writing_model.py`): it removes spoken fillers, applies
+spoken corrections and formatting commands, and fixes vocabulary casing. There
+is no LLM writer. It cannot infer what the user intended when speech
+recognition hears a different word.
 
 ## Baseline personal data
 
