@@ -9,6 +9,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 # app name (lower case) -> (exe name, title word). WhatsApp runs as a Chrome app window, so it is found by its exact title.
+POLL_S = 0.05  # how often to look for the window
 WINDOWS = {
     "slack": ("slack.exe", None),
     "t3 code": ("t3 code (nightly).exe", None),
@@ -134,7 +135,7 @@ def focus_app(name: str, find=find_window, bring=bring_to_front, timeout: float 
             return hwnd if bring(hwnd) else None
         if clock() >= deadline:
             return None
-        sleep(0.25)
+        sleep(POLL_S)
 
 
 def focus_new(name: str, start, find=list_windows, bring=bring_to_front, timeout: float = 10.0,
@@ -151,7 +152,7 @@ def focus_new(name: str, start, find=list_windows, bring=bring_to_front, timeout
             return new[0] if bring(new[0]) else None
         if clock() >= deadline:
             return None
-        sleep(0.25)
+        sleep(POLL_S)
 
 
 EDIT_TYPES = (50004, 50003)  # UIA Edit, ComboBox

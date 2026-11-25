@@ -469,6 +469,10 @@ class CommandRunner:
         app_id = self._app_id(name)
         if not app_id:
             return False, f"Couldn't open {name}", None
+        hwnd = self._focus(name, timeout=0)  # already open: just bring it to the front
+        if hwnd:
+            self.focused_at = self._clock()
+            return True, f"Opened {name}", hwnd
         try:
             self._launch(["explorer.exe", rf"shell:AppsFolder\{app_id}"])
         except OSError:

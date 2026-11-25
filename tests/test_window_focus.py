@@ -18,6 +18,13 @@ class FocusAppTests(unittest.TestCase):
         bring.assert_called_once_with(42)
         find.assert_called_with("t3 code (nightly).exe", None)
 
+    def test_polls_every_50_ms(self):
+        sleep = Mock()
+        now = [0.0]
+        focus_app("T3 Code", find=Mock(side_effect=[None, 42]), bring=Mock(return_value=True),
+                  sleep=sleep, clock=lambda: now[0])
+        sleep.assert_called_once_with(0.05)
+
     def test_false_when_no_window_appears(self):
         bring = Mock()
         self.assertFalse(self._run(Mock(return_value=None), bring))
@@ -68,7 +75,7 @@ class FocusNewTests(unittest.TestCase):
 
     def test_none_when_no_new_window_appears(self):
         bring = Mock()
-        self.assertIsNone(self._run([[5]] * 20, bring)[0])
+        self.assertIsNone(self._run([[5]] * 300, bring)[0])
         bring.assert_not_called()
 
     def test_none_when_the_new_window_will_not_take_focus(self):

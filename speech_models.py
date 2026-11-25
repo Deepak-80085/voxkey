@@ -69,7 +69,7 @@ class SpeechModelManager:
     ):
         self.runtime = runtime
         self.vocabulary_provider = vocabulary_provider or (lambda: [])
-        self.command_words_provider = command_words_provider or (lambda: [])  # second "open ..." pass only
+        self.command_words_provider = command_words_provider or (lambda: [])  # added to the prompt when command_terms=True
         self.model_loader = model_loader
         self.downloader = downloader
         self.cuda_checker = cuda_checker or self._missing_cuda_runtime
