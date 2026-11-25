@@ -25,6 +25,24 @@ class FocusAppTests(unittest.TestCase):
                   sleep=sleep, clock=lambda: now[0])
         sleep.assert_called_once_with(0.05)
 
+    def test_polling_slows_to_250_ms_after_one_second(self):
+        sleeps, now = [], [0.0]
+        def sleep(s):
+            sleeps.append(s)
+            now[0] += s
+        focus_app("T3 Code", find=Mock(return_value=None), bring=Mock(), timeout=10.0,
+                  sleep=sleep, clock=lambda: now[0])
+        self.assertEqual(sleeps[0], 0.05)
+        self.assertEqual(sleeps[-1], 0.25)
+        self.assertLess(len(sleeps), 60)
+
+    def test_find_window_prefers_the_largest_window_of_the_app(self):
+        area = {1: 100, 2: 5000, 3: 300}
+        with patch.object(window_focus, "list_windows", return_value=[1, 2, 3]):
+            self.assertEqual(window_focus.find_window("slack.exe", area=area.get), 2)
+        with patch.object(window_focus, "list_windows", return_value=[]):
+            self.assertIsNone(window_focus.find_window("slack.exe", area=area.get))
+
     def test_false_when_no_window_appears(self):
         bring = Mock()
         self.assertFalse(self._run(Mock(return_value=None), bring))

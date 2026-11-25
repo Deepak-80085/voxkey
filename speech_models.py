@@ -188,7 +188,7 @@ class SpeechModelManager:
         self.logger.info("Transcribing with device=%s", self.device)
         words = self.vocabulary_provider()
         if command_terms:
-            words = [*self.command_words_provider(), *words]
+            words = [*words, *self.command_words_provider()]  # user words first: the 90-word cap trims command names
         segments, _ = self.model.transcribe(
             _read_recording(audio_path),
             language="en",

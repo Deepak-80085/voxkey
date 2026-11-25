@@ -31,8 +31,8 @@ def site_runner(launch, state=STATE, chrome=CHROME, hwnd=77):
                          chrome_state=lambda: state, chrome_path=lambda: chrome), new_window
 
 
-def runner(apps=APPS, launch=None, focus=None):
-    return CommandRunner(Mock(), start_apps=lambda: apps, launch=launch or Mock(),
+def runner(apps=APPS, launch=None, focus=None, has_window=lambda name: False):
+    return CommandRunner(Mock(), start_apps=lambda: apps, launch=launch or Mock(), has_window=has_window,
                          focus=focus or Mock(side_effect=lambda name, timeout=None: timeout != 0))
 
 
@@ -207,6 +207,13 @@ class CommandRunnerTests(unittest.TestCase):
         self.assertEqual((ok, detail), (True, "Opened Slack"))
         focus.assert_called_once_with("Slack", timeout=0)
         launch.assert_not_called()
+
+    def test_window_that_will_not_focus_is_not_launched_again(self):
+        launch, focus = Mock(), Mock(return_value=None)
+        ok, detail = runner(launch=launch, focus=focus, has_window=lambda name: True).run(Command("app", "Slack"))
+        self.assertEqual((ok, detail), (False, "Couldn't bring Slack to front"))
+        launch.assert_not_called()
+        focus.assert_called_once_with("Slack", timeout=0)
 
     def test_missing_window_is_launched_then_waited_for(self):
         launch, focus = Mock(), Mock(side_effect=[None, 1])

@@ -142,6 +142,7 @@ class CommandSinglePassTests(unittest.TestCase):
         controller, speech, _, paste, commands = self._make(["Hello good morning."], None)
         controller.process_audio(Path("s.wav"))
         speech.transcribe.assert_called_once_with(Path("s.wav"), command_terms=True)
+        commands.parse.assert_not_called()
         paste.assert_called_once()
 
     def test_open_sentence_is_parsed_from_the_single_pass(self):
