@@ -41,6 +41,14 @@ class FocusAppTests(unittest.TestCase):
         self.assertEqual(WINDOWS["slack"][0], "slack.exe")
         self.assertEqual(WINDOWS["chatgpt"][0], "chatgpt.exe")
 
+    def test_whatsapp_title_must_be_the_app_window_not_a_browser_tab(self):
+        match = window_focus.title_matches
+        self.assertTrue(match("WhatsApp", "WhatsApp"))
+        self.assertTrue(match("WhatsApp", "(3) WhatsApp"))
+        for tab in ("WhatsApp Web - Google Chrome", "WhatsApp - Google Chrome", "WhatsApp — Mozilla Firefox",
+                    "Notes about WhatsApp"):
+            self.assertFalse(match("WhatsApp", tab), tab)
+
 
 class FocusNewTests(unittest.TestCase):
     def _run(self, found, bring, timeout=1.0):

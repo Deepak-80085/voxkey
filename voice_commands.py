@@ -61,19 +61,6 @@ def _who(email: str) -> str:
     return re.split(r"[^a-z]", email.casefold(), maxsplit=1)[0]
 
 
-def _find(tokens: list[str], names) -> tuple[str, int, int] | None:
-    """Best fuzzy match of any name against equal-length token windows: (name, start, length)."""
-    best = None
-    for name in names:
-        words = _tokens(name)
-        for i in range(len(tokens) - len(words) + 1):
-            score = SequenceMatcher(None, " ".join(tokens[i:i + len(words)]), " ".join(words)).ratio()
-            key = (score, len(words), -i)
-            if score >= THRESHOLD and (best is None or key > best[0]):
-                best = (key, name, i, len(words))
-    return best and best[1:]
-
-
 def _account(words: list[str], known: Known) -> str | None:
     me = org = person = extra = None
     self_name = known.self_name.casefold()
@@ -167,6 +154,10 @@ def parse(text: str, known: Known) -> Command | None:
     names = [*known.apps, "Claude Code", *known.sites]
     target, pre = "", []
     head = _head(rest, names)
+    if head:
+        after = _skip(rest[head[2]:])
+        if after[:1] and after[0] in _KEYWORDS and after[1:2] == ["in"]:
+            head = None  # "open the github channel in Slack": GitHub is the channel, not the app
     if head is None:  # "open [the] <1-4 words> channel in [workspace] NAME"
         k = next((i for i, t in enumerate(rest[:5]) if t in _KEYWORDS), 0)
         if not k or "open" in rest[:k] or rest[k + 1:k + 2] != ["in"]:

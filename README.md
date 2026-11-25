@@ -59,7 +59,7 @@ Add personal names to `%LOCALAPPDATA%\VoxKey\settings.json`. All keys are option
 }
 ```
 
-`command_words` are extra names the speech model listens for on "open ..." sentences only. `folder_roots` limits where folders are searched; by default VoxKey indexes every fixed drive except the system drive, in memory, and refreshes the list every 15 minutes. `workspaces` lists Slack workspace names. `self_name`, `default_account`, `orgs`, and `workspaces` are read once at startup, so restart VoxKey after changing them. `command_words` and `folder_roots` are read live.
+`command_words` are extra names the speech model listens for on "open ..." sentences only. `folder_roots` limits where folders are searched; by default VoxKey indexes every fixed drive except the system drive, in memory, and refreshes the list every 15 minutes. `workspaces` lists Slack workspace names. `self_name`, `default_account`, `orgs`, and `workspaces` are read once at startup, so restart VoxKey after changing them. `command_words` is read live. `folder_roots` is read when the folder list is rebuilt (every 15 minutes), so restart VoxKey to apply a change now.
 
 Safety: VoxKey types only into a search box it has confirmed through Windows UI Automation, and only while the target window is in front. It never types into message boxes and never sends messages.
 

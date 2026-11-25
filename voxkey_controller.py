@@ -153,17 +153,23 @@ class VoxKeyController:
             if self.commands and _OPEN.match(transcript):
                 # Only "open ..." sentences get a second pass with the command names in the prompt.
                 second_started = time.perf_counter()
-                second = self.speech.transcribe(audio_path, command_terms=True)
-                if self.memory:
-                    try:
-                        second = self.memory.correct(second, app)
-                    except Exception:
-                        if self.logger:
-                            self.logger.exception("Local correction memory unavailable")
-                if self.logger:
-                    self.logger.info("Command second pass; elapsed_ms=%d",
-                                     round((time.perf_counter() - second_started) * 1000))
-                outcome = self._run_command(second, transcribe_finished, released_at)
+                try:
+                    second = self.speech.transcribe(audio_path, command_terms=True)
+                except Exception:
+                    second = None  # keep the first transcript; it is typed as before
+                    if self.logger:
+                        self.logger.exception("Command second pass failed; typing the first transcript")
+                if second is not None:
+                    if self.memory:
+                        try:
+                            second = self.memory.correct(second, app)
+                        except Exception:
+                            if self.logger:
+                                self.logger.exception("Local correction memory unavailable")
+                    if self.logger:
+                        self.logger.info("Command second pass; elapsed_ms=%d",
+                                         round((time.perf_counter() - second_started) * 1000))
+                    outcome = self._run_command(second, transcribe_finished, released_at)
             if outcome is not None:
                 self._set_state(AppState.READY)
                 return outcome

@@ -373,7 +373,7 @@ class HoldToDictateService:
                 self.logger.info("Processing recording: %s", audio_path)
                 pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd, app=target_app,
                                                        released_at=released_at)
-                self.logger.info("Recording processed; pasted=%s", pasted)
+                self.logger.info("Recording handled; success=%s", pasted)
             except Exception:
                 self.logger.exception("Unexpected worker failure")
             finally:
@@ -392,6 +392,11 @@ def dispatch_ui_events(events: EventBus, shell: VoxKeyShell) -> None:
         shell.handle_event(event)
 
 
+def command_words(settings: dict) -> list[str]:
+    words = settings.get("command_words")
+    return [w for w in words if isinstance(w, str)] if isinstance(words, list) else []
+
+
 def main() -> None:
     if not claim_single_instance():
         notify_already_running()
@@ -405,8 +410,7 @@ def main() -> None:
     speech = SpeechModelManager(
         runtime,
         vocabulary_provider=lambda: runtime.load_settings()["vocabulary"],
-        command_words_provider=lambda: [w for w in runtime.load_settings().get("command_words") or []
-                                        if isinstance(w, str)],
+        command_words_provider=lambda: command_words(runtime.load_settings()),
         model_name=settings.get("speech_model", "small.en"),
     )
     cuda_runtime = ManagedOllamaRuntime(runtime)
