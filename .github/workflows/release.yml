@@ -30,6 +30,7 @@ jobs:
         run: choco install innosetup --no-progress -y
       - name: Package
         run: |
+          python -c "import comtypes.client; comtypes.client.GetModule('UIAutomationCore.dll')"
           pyinstaller --clean --noconfirm VoxKey.spec
           python tests/test_voxkey_packaging.py dist/VoxKey
       - name: Report release signing status
