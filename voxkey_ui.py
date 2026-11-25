@@ -589,12 +589,17 @@ class VoxKeyShell:
             for item in self.memory.list_sites():
                 sites.addItem(item["name"])
 
+        selected_site: list[str] = []  # name of the row the fields were filled from
+
         def save_site() -> None:
             try:
                 self.memory.add_site(site_name.text(), site_url.text())
+                if selected_site and selected_site[0].casefold() != site_name.text().strip().casefold():
+                    self.memory.delete_site(selected_site[0])  # renamed: replace, don't keep the old entry
             except (ValueError, OSError) as exc:
                 QMessageBox.warning(dialog, "Website not saved", str(exc))
                 return
+            selected_site.clear()
             site_name.clear()
             site_url.clear()
             refresh_sites()
@@ -607,7 +612,9 @@ class VoxKeyShell:
 
         def select_site(index: int) -> None:
             items = self.memory.list_sites()
+            selected_site.clear()
             if 0 <= index < len(items):
+                selected_site.append(items[index]["name"])
                 site_name.setText(items[index]["name"])
                 site_url.setText(items[index]["url"])
 

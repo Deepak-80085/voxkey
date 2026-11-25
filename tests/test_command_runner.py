@@ -107,6 +107,20 @@ class CommandRunnerTests(unittest.TestCase):
             self.assertTrue(ok)
             launch.assert_called_once_with([CHROME, "--new-window", "https://www.youtube.com"])
 
+    def test_my_account_without_a_profile_opens_like_plain_open(self):
+        launch = Mock()
+        r = site_runner(launch)[0]
+        r.known = Known(default_account="zed@acme.test")
+        ok, _ = r.run(Command("site", "Gmail", url="https://x.test", account="zed@acme.test"))
+        self.assertTrue(ok)
+        launch.assert_called_once_with([CHROME, "--new-window", "https://x.test"])
+
+    def test_no_account_pins_the_last_used_profile_so_a_cold_start_skips_the_picker(self):
+        launch = Mock()
+        state = {"profile": {**STATE["profile"], "last_used": "Profile 7"}}
+        site_runner(launch, state=state)[0].run(Command("site", "YouTube", url="https://x.test"))
+        launch.assert_called_once_with([CHROME, "--profile-directory=Profile 7", "--new-window", "https://x.test"])
+
     def test_site_refuses_a_url_that_is_not_http(self):
         for url in ("--disable-web-security", "file:///c:/x", "javascript:alert(1)", ""):
             launch = Mock()

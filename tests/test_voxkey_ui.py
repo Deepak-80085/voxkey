@@ -194,5 +194,29 @@ class VoxKeyUiTests(unittest.TestCase):
             shell.close()
             app.quit()
 
+    def test_websites_tab_rename_replaces_the_selected_site(self):
+        from unittest.mock import Mock
+        from PySide6.QtWidgets import QLineEdit, QListWidget, QPushButton
+        from personal_memory import PersonalMemory
+        from voxkey_ui import VoxKeyShell, create_qt_application
+
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            memory.add_site("acme board", "https://board.example.com")
+            runtime = Mock()
+            runtime.load_settings.return_value = {"sounds_enabled": False, "vocabulary": []}
+            runtime.logger.return_value = Mock()
+            app = create_qt_application()
+            shell = VoxKeyShell(Mock(), runtime, lambda: None, memory=memory)
+            shell.show_memory()
+            dialog = shell.memory_dialog
+            sites = next(w for w in dialog.findChildren(QListWidget) if w.count() and w.item(0).text() == "acme board")
+            sites.setCurrentRow(0)
+            next(f for f in dialog.findChildren(QLineEdit) if f.placeholderText().startswith("Spoken name")).setText("acme tasks")
+            next(b for b in dialog.findChildren(QPushButton) if b.text() == "Save website").click()
+            self.assertEqual(memory.list_sites(), [{"name": "acme tasks", "url": "https://board.example.com"}])
+            shell.close()
+            app.quit()
+
 if __name__ == "__main__":
     unittest.main()

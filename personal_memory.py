@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from voice_commands import APPS
+from voice_commands import APPS, _tokens
 
 
 class PersonalMemory:
@@ -30,7 +30,7 @@ class PersonalMemory:
                 # hand-edited file: keep only well-formed sites with a safe address (it ends up on Chrome's command line)
                 self._data["sites"] = [x for x in self._data["sites"] if isinstance(x, dict)
                                        and isinstance(x.get("name"), str) and isinstance(x.get("url"), str)
-                                       and self._valid_url(x["url"])]
+                                       and self._valid_url(x["url"]) and _tokens(x["name"])]
         except FileNotFoundError:
             pass
         except (OSError, ValueError) as exc:
@@ -214,6 +214,8 @@ class PersonalMemory:
 
     def add_site(self, name: str, url: str) -> None:
         name = self._phrase(name, "Website name")
+        if not _tokens(name):  # the voice parser matches a-z and 0-9 only; such a name could never be said
+            raise ValueError("Website name needs at least one letter a-z or digit")
         url = url.strip()
         if not self._valid_url(url):
             raise ValueError("Web address must be http(s), up to 2048 characters, with no spaces, quotes, or control characters")

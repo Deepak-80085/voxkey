@@ -379,11 +379,17 @@ class CommandRunner:
         state = self._chrome_state()
         if command.account:
             folder = chrome_profile(state, command.account)
-            if not folder:
+            default = self.known.default_account
+            if not folder and not (default and command.account.casefold() == default.casefold()):
                 return False, f"No Chrome profile for {command.account}"
-        else:  # no person spoken = the user; no default or no profile for it: no flag, Chrome picks
+        else:
             folder = chrome_profile(state, self.known.default_account) if self.known.default_account else None
-        if folder:
+        if not folder:  # "my account" with no profile for it = plain open. Pin Chrome's own last-used profile: a cold start with no flag can stop at the profile picker
+            try:
+                folder = state["profile"]["last_used"]
+            except (TypeError, KeyError):
+                pass
+        if isinstance(folder, str) and folder:
             flag = [f"--profile-directory={folder}"]
         chrome = self._chrome_path()
         if not chrome:

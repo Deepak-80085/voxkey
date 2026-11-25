@@ -102,6 +102,17 @@ class VoiceCommandTests(unittest.TestCase):
         self.assertEqual(parse("open general channel in slack", known),
                          Command("search", "Slack", target="general"))
 
+    def test_site_names_without_letters_or_digits_never_match(self):
+        known = Known(**{**KNOWN.__dict__, "sites": {**KNOWN.sites, "ÉÉ": "https://e.example.test"}})
+        self.assertIsNone(parse("open", known))
+        self.assertEqual(parse("Open Slack.", known), Command("app", "Slack"))
+
+    def test_site_names_that_start_with_a_filler_word_can_be_opened(self):
+        known = Known(**{**KNOWN.__dict__, "sites": {"My Drive": "https://d.example.test", "The Verge": "https://v.example.test"}})
+        self.assertEqual(parse("open my drive", known), Command("site", "My Drive", url="https://d.example.test"))
+        self.assertEqual(parse("Open The Verge.", known), Command("site", "The Verge", url="https://v.example.test"))
+        self.assertEqual(parse("open verge", known), Command("site", "The Verge", url="https://v.example.test"))
+
     def test_saved_site_overrides_a_built_in_site_of_the_same_name(self):
         known = Known(**{**KNOWN.__dict__, "sites": {**BUILTIN_SITES, "GitHub": "https://git.example.test"}})
         self.assertEqual(parse("Open GitHub.", known), Command("site", "GitHub", url="https://git.example.test"))

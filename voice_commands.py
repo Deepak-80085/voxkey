@@ -145,7 +145,9 @@ def _head(tokens: list[str], names) -> tuple[float, str, int] | None:
     """Best name at the very start of tokens: (score, name, token count)."""
     best = None
     for name in names:
-        words = _tokens(name)
+        words = _skip(_tokens(name))  # the sentence is matched after _skip, so "My Drive" is matched as "drive"
+        if not words:  # no a-z/0-9 at all ("ÉÉ"): an empty name would match anything
+            continue
         score = SequenceMatcher(None, " ".join(tokens[:len(words)]), " ".join(words)).ratio()
         if score >= THRESHOLD and (best is None or (score, len(words)) > best[:1] + best[2:]):
             best = (score, name, len(words))
@@ -185,7 +187,7 @@ def parse(text: str, known: Known) -> Command | None:
     score, name, length = head
     lower = name.casefold()
     tail = _skip(rest[length:])
-    if score < _STRONG and (tail or target or rest[0][0] != lower[0]):
+    if score < _STRONG and (tail or target or rest[0][0] != _skip(_tokens(name))[0][0]):
         return None
     if lower in ("claude code", "terminal"):
         if tail and tail[0] not in _CONNECT:
