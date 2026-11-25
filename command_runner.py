@@ -109,7 +109,8 @@ def fixed_drives() -> list[Path]:
 def default_index_roots(folder_roots, drive_root, drives=fixed_drives, system_drive=None) -> list[Path]:
     """The folder_roots setting if set, else every fixed drive except the system drive."""
     if folder_roots:
-        return [drive_root(str(r)[:1]) for r in folder_roots if str(r)[:1].isalpha()]
+        return [Path(str(r)) if len(str(r)) > 2 and Path(str(r)).is_dir() else drive_root(str(r)[:1])
+                for r in folder_roots if str(r)[:1].isalpha()]
     system = (system_drive or os.environ.get("SystemDrive", "C:")).upper()
     return [d for d in drives() if str(d)[:2].upper() != system]
 

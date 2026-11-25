@@ -1,7 +1,14 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from voxkey_app import paste_polished_text, restore_foreground_window_handle
+from voxkey_app import command_words, paste_polished_text, restore_foreground_window_handle
+
+
+class CommandWordsTests(unittest.TestCase):
+    def test_only_a_list_of_strings_counts(self):
+        self.assertEqual(command_words({"command_words": ["Acme", 3, "Sam"]}, Mock(list_sites=lambda: [])), ["Acme", "Sam"])
+        self.assertEqual(command_words({"command_words": "Acme"}, Mock(list_sites=lambda: [])), [])
+        self.assertEqual(command_words({}, Mock(list_sites=lambda: [])), [])
 
 
 class VoxKeyPasteFocusTests(unittest.TestCase):

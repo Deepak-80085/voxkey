@@ -159,6 +159,13 @@ class CommandSecondPassTests(unittest.TestCase):
         writer.polish.assert_called_once_with("Open the door.")
         paste.assert_called_once()
 
+    def test_second_pass_error_types_the_first_transcript(self):
+        controller, speech, writer, paste, commands = self._make(["Open the door.", RuntimeError("boom")], None)
+        self.assertTrue(controller.process_audio(Path("s.wav")))
+        writer.polish.assert_called_once_with("Open the door.")
+        paste.assert_called_once()
+        commands.parse.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

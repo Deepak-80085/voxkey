@@ -133,6 +133,7 @@ class VoiceCommandTests(unittest.TestCase):
             "Open the Gmail in Sam, work again.": site("Gmail", "https://mail.google.com", "sam@acme.test"),
             "Open WhatsApp and Open Sam Globex Chat.": Command("search", "WhatsApp", target="sam globex"),
             "Open Claude Code in VoxKey.": Command("terminal", "Terminal", words=("voxkey",), run_claude=True),
+            "Open the GitHub channel in Slack.": Command("search", "Slack", target="github"),
         }
         for text, expected in cases.items():
             with self.subTest(text):

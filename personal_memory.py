@@ -15,6 +15,8 @@ from voice_commands import APPS, _tokens
 
 class PersonalMemory:
     STYLES = ("standard", "minimal", "bullet notes")
+    _REQUIRED = {"corrections": ("heard", "intended"), "suggestions": ("heard", "intended"),
+                 "snippets": ("cue", "text"), "history": ("text",)}
 
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -27,6 +29,9 @@ class PersonalMemory:
                 for key in self._data:
                     if isinstance(loaded.get(key), type(self._data[key])):
                         self._data[key] = loaded[key]
+                for key, fields in self._REQUIRED.items():
+                    self._data[key] = [item for item in self._data[key] if isinstance(item, dict)
+                                       and all(isinstance(item.get(f), str) for f in fields)]
                 # hand-edited file: keep only well-formed sites with a safe address (it ends up on Chrome's command line)
                 self._data["sites"] = [x for x in self._data["sites"] if isinstance(x, dict)
                                        and isinstance(x.get("name"), str) and isinstance(x.get("url"), str)

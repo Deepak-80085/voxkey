@@ -585,6 +585,11 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(command_runner.default_index_roots(["e"], drive, fixed, "C:"), [Path("E:\\")])
         self.assertEqual(command_runner.default_index_roots([], drive, fixed, "C:"), [Path("D:\\"), Path("E:\\")])
 
+    def test_a_folder_root_that_exists_is_kept_whole(self):
+        self.mkdirs("work")
+        roots = command_runner.default_index_roots([str(self.root / "work"), "e"], lambda l: Path(f"{l.upper()}:\\"))
+        self.assertEqual(roots, [self.root / "work", Path("E:\\")])
+
     def test_spoken_drive_limits_results_to_that_drive(self):
         other = Path(self.root, "other")
         other.mkdir()

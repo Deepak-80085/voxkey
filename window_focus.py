@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import ctypes
+import re
 import time
 from ctypes import wintypes
 from pathlib import Path
 
-# app name (lower case) -> (exe name, title word). WhatsApp runs as a Chrome app window, so it is found by title.
+# app name (lower case) -> (exe name, title word). WhatsApp runs as a Chrome app window, so it is found by its exact title.
 WINDOWS = {
     "slack": ("slack.exe", None),
     "t3 code": ("t3 code (nightly).exe", None),
@@ -36,6 +37,14 @@ _kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
 _kernel32.QueryFullProcessImageNameW.argtypes = (
     wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD))
 _kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+
+def title_matches(word: str, title: str) -> bool:
+    """The window is the app itself: its title is just the word, maybe with an unread count ("(3) WhatsApp").
+    A browser tab adds " - Google Chrome" and never matches. WhatsApp's window is a Chrome app window, so its exe
+    cannot tell it from a Chrome tab."""
+    return re.fullmatch(rf"(\(\d+\) )?{re.escape(word)}", title) is not None
+
+
 _ENUM = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 
@@ -70,7 +79,7 @@ def list_windows(exe: str | None, title_word: str | None = None, limit: int | No
         _user32.GetWindowTextW(hwnd, title, 256)
         if not title.value:
             return True
-        if (exe and _exe_name(hwnd) == exe) or (title_word and title_word in title.value):
+        if (exe and _exe_name(hwnd) == exe) or (title_word and title_matches(title_word, title.value)):
             found.append(int(hwnd))
             return limit is None or len(found) < limit
         return True

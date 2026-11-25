@@ -17,6 +17,21 @@ class PersonalMemoryTests(unittest.TestCase):
                 memory.add_correction("hello", "world")
             self.assertEqual(path.read_text(encoding="utf-8"), "{broken")
 
+    def test_malformed_entries_are_dropped_at_load(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "memory.json"
+            path.write_text(json.dumps({
+                "snippets": [{"text": "no cue"}, "junk", {"cue": "sig", "text": "Thanks"}],
+                "corrections": [{"heard": "a"}, {"heard": "git hub", "intended": "GitHub"}],
+                "suggestions": [{"heard": "x"}], "history": [{"nope": 1}],
+            }), encoding="utf-8")
+            memory = PersonalMemory(path)
+            self.assertEqual(memory.snippet_for("sig"), "Thanks")
+            self.assertIsNone(memory.snippet_for("missing"))
+            self.assertEqual(memory.correct("git hub"), "GitHub")
+            self.assertEqual(memory.list_suggestions(), [])
+            self.assertEqual(memory.history(), [])
+
     def test_correction_survives_restart_and_can_be_deleted(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "memory.json"

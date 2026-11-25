@@ -373,7 +373,7 @@ class HoldToDictateService:
                 self.logger.info("Processing recording: %s", audio_path)
                 pasted = self.controller.process_audio(audio_path, target_hwnd=target_hwnd, app=target_app,
                                                        released_at=released_at)
-                self.logger.info("Recording processed; pasted=%s", pasted)
+                self.logger.info("Recording handled; success=%s", pasted)
             except Exception:
                 self.logger.exception("Unexpected worker failure")
             finally:
@@ -394,7 +394,8 @@ def dispatch_ui_events(events: EventBus, shell: VoxKeyShell) -> None:
 
 def command_words(settings: dict, memory: PersonalMemory) -> list[str]:
     """Names for the second "open ..." Whisper pass only: settings words plus saved website names."""
-    return [*[w for w in settings.get("command_words") or [] if isinstance(w, str)],
+    words = settings.get("command_words")
+    return [*([w for w in words if isinstance(w, str)] if isinstance(words, list) else []),
             *[s["name"] for s in memory.list_sites()]]
 
 
