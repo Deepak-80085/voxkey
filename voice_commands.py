@@ -18,6 +18,7 @@ BUILTIN_SITES = {
     "Gmail": "https://mail.google.com",
     "Google Meet": "https://meet.google.com",
 }
+APPS = ("Slack", "T3 Code", "Claude", "ChatGPT", "WhatsApp", "Chrome", "Terminal")
 _SEARCHABLE = {"slack", "whatsapp", "t3 code"}
 _KEYWORDS = {"channel", "chat", "thread"}
 _FILLER = {"the", "a", "an", "app", "application", "desktop"}
@@ -30,7 +31,7 @@ _FOLDER_FILLER = _FOLDER_BREAK | {"open", "the", "a", "my", "terminal", "claude"
 @dataclass(frozen=True)
 class Known:
     """What the user has set up. Lowercase keys in orgs; accounts are emails."""
-    apps: tuple[str, ...] = ("Slack", "T3 Code", "Claude", "ChatGPT", "WhatsApp", "Chrome", "Terminal")
+    apps: tuple[str, ...] = APPS
     sites: dict[str, str] = field(default_factory=lambda: dict(BUILTIN_SITES))
     accounts: tuple[str, ...] = ()
     self_name: str = ""
@@ -51,6 +52,7 @@ class Command:
     words: tuple[str, ...] = ()
     phrase: str = field(default="", compare=False)  # all folder words joined, to try as one name ("to do" -> todo)
     run_claude: bool = False
+    heard: str = field(default="", compare=False)  # the account words, for the "Account not clear" note
 
 
 def _tokens(text: str) -> list[str]:
@@ -130,7 +132,9 @@ def _head(tokens: list[str], names) -> tuple[float, str, int] | None:
     """Best name at the very start of tokens: (score, name, token count)."""
     best = None
     for name in names:
-        words = _tokens(name)
+        words = _skip(_tokens(name))  # the sentence is matched after _skip, so "My Drive" is matched as "drive"
+        if not words:  # no a-z/0-9 at all ("ÉÉ"): an empty name would match anything
+            continue
         score = SequenceMatcher(None, " ".join(tokens[:len(words)]), " ".join(words)).ratio()
         if score >= THRESHOLD and (best is None or (score, len(words)) > best[:1] + best[2:]):
             best = (score, name, len(words))
@@ -174,7 +178,7 @@ def parse(text: str, known: Known) -> Command | None:
     score, name, length = head
     lower = name.casefold()
     tail = _skip(rest[length:])
-    if score < _STRONG and (tail or target or rest[0][0] != lower[0]):
+    if score < _STRONG and (tail or target or rest[0][0] != _skip(_tokens(name))[0][0]):
         return None
     if lower in ("claude code", "terminal"):
         if tail and tail[0] not in _CONNECT:
@@ -189,8 +193,8 @@ def parse(text: str, known: Known) -> Command | None:
     if tail and (tail[0] not in _CONNECT or not any(_known_word(t, known) for t in tail)):
         return None
     words = [t for t in pre + tail if t != ","]
-    if name in known.sites:
-        return Command("site", name, url=known.sites[name], account=_account(words, known))
+    if name in known.sites and lower not in {a.casefold() for a in (*known.apps, "Claude Code")}:  # apps win
+        return Command("site", name, url=known.sites[name], account=_account(words, known), heard=" ".join(words))
     if target and lower in _SEARCHABLE:
         close = [w for r in words for w in get_close_matches(r, known.workspaces, 1, THRESHOLD)]
         return Command("search", name, target=target, workspace=close[0] if lower == "slack" and close else "")

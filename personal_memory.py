@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import re
 import threading
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+
+from voice_commands import APPS, _tokens
 
 
 class PersonalMemory:
@@ -18,7 +21,7 @@ class PersonalMemory:
     def __init__(self, path: Path):
         self.path = Path(path)
         self._lock = threading.RLock()
-        self._data = {"corrections": [], "suggestions": [], "history": [], "snippets": [], "styles": {}}
+        self._data = {"corrections": [], "suggestions": [], "history": [], "snippets": [], "sites": [], "styles": {}}
         self.load_error = None
         try:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
@@ -29,6 +32,10 @@ class PersonalMemory:
                 for key, fields in self._REQUIRED.items():
                     self._data[key] = [item for item in self._data[key] if isinstance(item, dict)
                                        and all(isinstance(item.get(f), str) for f in fields)]
+                # hand-edited file: keep only well-formed sites with a safe address (it ends up on Chrome's command line)
+                self._data["sites"] = [x for x in self._data["sites"] if isinstance(x, dict)
+                                       and isinstance(x.get("name"), str) and isinstance(x.get("url"), str)
+                                       and self._valid_url(x["url"]) and _tokens(x["name"])]
         except FileNotFoundError:
             pass
         except (OSError, ValueError) as exc:
@@ -54,6 +61,11 @@ class PersonalMemory:
         if not value or len(value) > 60 or "\n" in value or not any(char.isalnum() for char in value):
             raise ValueError(f"{field} must be 1–60 characters and contain a letter or number")
         return value
+
+    @staticmethod
+    def _valid_url(url: str) -> bool:
+        return bool(re.fullmatch(r"https?://\S+", url)) and len(url) <= 2048 and '"' not in url and not any(
+            unicodedata.category(char) == "Cc" for char in url)
 
     @staticmethod
     def _app(value: str | None) -> str | None:
@@ -199,6 +211,33 @@ class PersonalMemory:
             self._check_editable()
             snippets = self._data["snippets"]
             snippets[:] = [item for item in snippets if item["cue"].casefold() != cue.casefold()]
+            self._save()
+
+    def list_sites(self) -> list[dict]:
+        with self._lock:
+            return [dict(item) for item in self._data["sites"]]
+
+    def add_site(self, name: str, url: str) -> None:
+        name = self._phrase(name, "Website name")
+        if not _tokens(name):  # the voice parser matches a-z and 0-9 only; such a name could never be said
+            raise ValueError("Website name needs at least one letter a-z or digit")
+        url = url.strip()
+        if not self._valid_url(url):
+            raise ValueError("Web address must be http(s), up to 2048 characters, with no spaces, quotes, or control characters")
+        if name.casefold() in {app.casefold() for app in (*APPS, "Claude Code")}:
+            raise ValueError(f"{name} is an app name; pick another name for the website")
+        with self._lock:
+            self._check_editable()
+            sites = self._data["sites"]
+            sites[:] = [item for item in sites if item["name"].casefold() != name.casefold()]
+            sites.append({"name": name, "url": url})
+            self._save()
+
+    def delete_site(self, name: str) -> None:
+        with self._lock:
+            self._check_editable()
+            sites = self._data["sites"]
+            sites[:] = [item for item in sites if item["name"].casefold() != name.casefold()]
             self._save()
 
     def snippet_for(self, text: str) -> str | None:

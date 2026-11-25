@@ -572,6 +572,69 @@ class VoxKeyShell:
         remove_snippet.clicked.connect(delete_snippet)
         snippet_layout.addWidget(remove_snippet)
 
+        sites_page = QWidget()
+        tabs.addTab(sites_page, "Websites")
+        site_layout = QVBoxLayout(sites_page)
+        site_layout.addWidget(QLabel("Say \"open\" and a saved name to open its website in Chrome."))
+        site_name = QLineEdit()
+        site_name.setPlaceholderText("Spoken name, for example sudo tracker")
+        site_url = QLineEdit()
+        site_url.setPlaceholderText("Web address, starting with https://")
+        site_layout.addWidget(site_name)
+        site_layout.addWidget(site_url)
+        sites = QListWidget()
+
+        def refresh_sites() -> None:
+            sites.clear()
+            for item in self.memory.list_sites():
+                sites.addItem(item["name"])
+
+        selected_site: list[str] = []  # name of the row the fields were filled from
+
+        def save_site() -> None:
+            try:
+                self.memory.add_site(site_name.text(), site_url.text())
+                if selected_site and selected_site[0].casefold() != site_name.text().strip().casefold():
+                    self.memory.delete_site(selected_site[0])  # renamed: replace, don't keep the old entry
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(dialog, "Website not saved", str(exc))
+                return
+            selected_site.clear()
+            site_name.clear()
+            site_url.clear()
+            refresh_sites()
+
+        save_site_button = QPushButton("Save website")
+        save_site_button.clicked.connect(save_site)
+        site_layout.addWidget(save_site_button)
+        refresh_sites()
+        site_layout.addWidget(sites)
+
+        def select_site(index: int) -> None:
+            items = self.memory.list_sites()
+            selected_site.clear()
+            if 0 <= index < len(items):
+                selected_site.append(items[index]["name"])
+                site_name.setText(items[index]["name"])
+                site_url.setText(items[index]["url"])
+
+        sites.currentRowChanged.connect(select_site)
+
+        def delete_site() -> None:
+            index = sites.currentRow()
+            items = self.memory.list_sites()
+            if 0 <= index < len(items):
+                try:
+                    self.memory.delete_site(items[index]["name"])
+                except OSError as exc:
+                    QMessageBox.warning(dialog, "Website not deleted", str(exc))
+                    return
+                refresh_sites()
+
+        remove_site = QPushButton("Delete selected website")
+        remove_site.clicked.connect(delete_site)
+        site_layout.addWidget(remove_site)
+
         styles_page = QWidget()
         tabs.addTab(styles_page, "App styles")
         style_layout = QVBoxLayout(styles_page)

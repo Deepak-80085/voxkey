@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from window_focus import UiaSearchBox, focus_app, focus_new, is_foreground
@@ -184,6 +185,35 @@ def read_chrome_state(path: Path = CHROME_STATE) -> dict | None:
         return None
 
 
+def chrome_profile(state: dict | None, email: str) -> str | None:
+    """The Chrome profile folder ("Profile 7") whose signed-in email is this one, or None."""
+    try:
+        for folder, info in state["profile"]["info_cache"].items():
+            if str(info.get("user_name", "")).casefold() == email.casefold():
+                return folder
+    except (TypeError, KeyError, AttributeError):
+        pass
+    return None
+
+
+def _app_paths_chrome() -> str | None:
+    import winreg
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe") as key:
+                return winreg.QueryValueEx(key, "")[0]
+        except OSError:
+            continue
+    return None
+
+
+def find_chrome(registry=_app_paths_chrome, exists=os.path.isfile, env=os.environ) -> str | None:
+    """chrome.exe from the App Paths registry key, else the usual install folders."""
+    candidates = [registry()] + [os.path.join(env[var], "Google", "Chrome", "Application", "chrome.exe")
+                                 for var in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA") if env.get(var)]
+    return next((c for c in candidates if c and exists(c)), None)
+
+
 def get_start_apps() -> list[dict]:
     out = subprocess.run(
         ["powershell", "-NoProfile", "-Command",
@@ -198,9 +228,13 @@ class CommandRunner:
     def __init__(self, logger=None, known: Known | None = None, start_apps=get_start_apps,
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
                  keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic,
-                 new_window=focus_new, drive_root=drive_root, folder_roots=lambda: (), index_roots=None):
+                 new_window=focus_new, drive_root=drive_root, folder_roots=lambda: (), index_roots=None,
+                 sites_provider=lambda: {}, chrome_state=read_chrome_state, chrome_path=find_chrome, known_provider=None):
         self.logger = logger
         self.known = known or Known()
+        self._known_provider = known_provider  # rebuilt on every command: new Chrome profiles and settings apply without restart
+        self._chrome_state, self._chrome_path = chrome_state, chrome_path
+        self._sites = sites_provider  # saved websites, read on every command so edits apply without restart
         self._start_apps = start_apps
         self._launch = launch
         self._focus = focus
@@ -244,7 +278,9 @@ class CommandRunner:
             return
 
     def parse(self, text: str) -> Command | None:
-        return parse(text, self.known)
+        if self._known_provider:
+            self.known = self._known_provider()
+        return parse(text, replace(self.known, sites={**self.known.sites, **self._sites()}))
 
     def _app_id(self, name: str) -> str | None:
         wanted = name.casefold()
@@ -260,9 +296,9 @@ class CommandRunner:
             return self._search(command)
         if command.kind == "terminal":
             return self._terminal(command)
+        if command.kind == "site":
+            return self._site(command)
         if command.kind != "app":
-            if command.account in (AMBIGUOUS, UNKNOWN):
-                return False, "Account not clear"
             return False, "Not supported yet"
         return self._open(command.name)[:2]
 
@@ -332,6 +368,50 @@ class CommandRunner:
             k.release_modifiers()
             raise
         return True, f"Searched {name} for {target}"
+
+    def _site(self, command: Command) -> tuple[bool, str]:
+        """Open the URL in Chrome in the profile of the spoken account (none spoken: the default account's profile)."""
+        self.focused_at = None
+        if command.account in (AMBIGUOUS, UNKNOWN):
+            return False, f"Account not clear: {command.heard}"
+        if not re.match(r"https?://", command.url):  # trust boundary: the URL goes on Chrome's command line
+            return False, "Website address not allowed"
+        flag = []
+        state = self._chrome_state()
+        if command.account:
+            folder = chrome_profile(state, command.account)
+            default = self.known.default_account
+            if not folder and not (default and command.account.casefold() == default.casefold()):
+                return False, f"No Chrome profile for {command.account}"
+        else:
+            folder = chrome_profile(state, self.known.default_account) if self.known.default_account else None
+        if not folder:  # "my account" with no profile for it = plain open. Pin Chrome's own last-used profile: a cold start with no flag can stop at the profile picker
+            try:
+                folder = state["profile"]["last_used"]
+            except (TypeError, KeyError):
+                pass
+        if isinstance(folder, str) and folder:
+            flag = [f"--profile-directory={folder}"]
+        chrome = self._chrome_path()
+        if not chrome:
+            return False, "Couldn't find Chrome"
+        # --new-window: without it a running Chrome opens a tab in an old window and no new window appears to focus (measured)
+        argv = [chrome, *flag, "--new-window", command.url]  # a list, never a shell string
+
+        def start():
+            self._launch(argv)
+
+        # ponytail: focus_new takes the newest Chrome window; a Chrome window opened by someone else in the same moment could be picked. Ceiling accepted; fix by matching the window title to the URL.
+        try:
+            hwnd = self._new_window("chrome", start)
+        except OSError:
+            if self.logger:
+                self.logger.exception("Chrome launch failed")
+            return False, f"Couldn't open {command.name}"
+        if not hwnd:
+            return False, "Couldn't bring Chrome to front"
+        self.focused_at = self._clock()
+        return True, f"Opened {command.name}"
 
     def _terminal(self, command: Command) -> tuple[bool, str]:
         self.focused_at = None

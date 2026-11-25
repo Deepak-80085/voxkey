@@ -6,9 +6,9 @@ from voxkey_app import command_words, paste_polished_text, restore_foreground_wi
 
 class CommandWordsTests(unittest.TestCase):
     def test_only_a_list_of_strings_counts(self):
-        self.assertEqual(command_words({"command_words": ["Acme", 3, "Sam"]}), ["Acme", "Sam"])
-        self.assertEqual(command_words({"command_words": "Acme"}), [])
-        self.assertEqual(command_words({}), [])
+        self.assertEqual(command_words({"command_words": ["Acme", 3, "Sam"]}, Mock(list_sites=lambda: [])), ["Acme", "Sam"])
+        self.assertEqual(command_words({"command_words": "Acme"}, Mock(list_sites=lambda: [])), [])
+        self.assertEqual(command_words({}, Mock(list_sites=lambda: [])), [])
 
 
 class VoxKeyPasteFocusTests(unittest.TestCase):

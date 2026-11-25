@@ -8,13 +8,27 @@ from unittest.mock import Mock, patch
 import command_runner
 from command_runner import CommandRunner, PynputKeys, known_from
 from window_focus import EDIT_TYPES, looks_like_search
-from voice_commands import AMBIGUOUS, Command
+from voice_commands import AMBIGUOUS, UNKNOWN, Command, Known
 
 APPS = [
     {"Name": "Slack", "AppID": "Slack.App.Id"},
     {"Name": "Notes Pro (Nightly)", "AppID": "Notes.Nightly!App"},
     {"Name": "Notes", "AppID": "Notes.Exact!App"},
 ]
+
+
+CHROME = r"C:\Chrome\chrome.exe"
+STATE = {"profile": {"info_cache": {"Default": {"user_name": "bob@acme.test"},
+                                    "Profile 7": {"user_name": "ann@acme.test"}}}}
+
+
+def site_runner(launch, state=STATE, chrome=CHROME, hwnd=77):
+    def new_window(name, start):
+        start()
+        return hwnd
+    new_window = Mock(side_effect=new_window)
+    return CommandRunner(Mock(), launch=launch, new_window=new_window,
+                         chrome_state=lambda: state, chrome_path=lambda: chrome), new_window
 
 
 def runner(apps=APPS, launch=None, focus=None):
@@ -52,11 +66,132 @@ class CommandRunnerTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(detail, "Couldn't open Slack")
 
-    def test_site_is_not_supported_yet(self):
+    def test_unclear_account_fails_and_launches_nothing(self):
+        for marker in (AMBIGUOUS, UNKNOWN):
+            launch = Mock()
+            command = Command("site", "GitHub", account=marker, heard="in sam account")
+            ok, detail = site_runner(launch)[0].run(command)
+            self.assertEqual((ok, detail), (False, "Account not clear: in sam account"))
+            launch.assert_not_called()
+
+    def test_site_opens_in_the_profile_of_the_account(self):
         launch = Mock()
-        ok, detail = runner(launch=launch).run(Command("site", "GitHub", account=AMBIGUOUS))
-        self.assertEqual((ok, detail), (False, "Account not clear"))
+        r, new_window = site_runner(launch)
+        ok, detail = r.run(Command("site", "Gmail", url="https://mail.google.com", account="ann@acme.test"))
+        self.assertTrue(ok)
+        self.assertEqual(detail, "Opened Gmail")
+        launch.assert_called_once_with([CHROME, "--profile-directory=Profile 7", "--new-window", "https://mail.google.com"])
+        new_window.assert_called_once()
+        self.assertEqual(new_window.call_args.args[0], "chrome")
+        self.assertIsNotNone(r.focused_at)
+
+    def test_account_match_ignores_case(self):
+        launch = Mock()
+        site_runner(launch)[0].run(Command("site", "Gmail", url="https://x.test", account="ANN@acme.TEST"))
+        self.assertIn("--profile-directory=Profile 7", launch.call_args.args[0])
+
+    def test_site_with_no_account_uses_the_default_account_profile(self):
+        launch = Mock()
+        r = site_runner(launch)[0]
+        r.known = Known(default_account="ann@acme.test")
+        ok, _ = r.run(Command("site", "YouTube", url="https://www.youtube.com"))
+        self.assertTrue(ok)
+        launch.assert_called_once_with([CHROME, "--profile-directory=Profile 7", "--new-window", "https://www.youtube.com"])
+
+    def test_site_with_no_default_account_or_no_profile_sets_no_profile_flag(self):
+        for known in (Known(), Known(default_account="zed@acme.test")):
+            launch = Mock()
+            r = site_runner(launch)[0]
+            r.known = known
+            ok, _ = r.run(Command("site", "YouTube", url="https://www.youtube.com"))
+            self.assertTrue(ok)
+            launch.assert_called_once_with([CHROME, "--new-window", "https://www.youtube.com"])
+
+    def test_my_account_without_a_profile_opens_like_plain_open(self):
+        launch = Mock()
+        r = site_runner(launch)[0]
+        r.known = Known(default_account="zed@acme.test")
+        ok, _ = r.run(Command("site", "Gmail", url="https://x.test", account="zed@acme.test"))
+        self.assertTrue(ok)
+        launch.assert_called_once_with([CHROME, "--new-window", "https://x.test"])
+
+    def test_no_account_pins_the_last_used_profile_so_a_cold_start_skips_the_picker(self):
+        launch = Mock()
+        state = {"profile": {**STATE["profile"], "last_used": "Profile 7"}}
+        site_runner(launch, state=state)[0].run(Command("site", "YouTube", url="https://x.test"))
+        launch.assert_called_once_with([CHROME, "--profile-directory=Profile 7", "--new-window", "https://x.test"])
+
+    def test_site_refuses_a_url_that_is_not_http(self):
+        for url in ("--disable-web-security", "file:///c:/x", "javascript:alert(1)", ""):
+            launch = Mock()
+            ok, detail = site_runner(launch)[0].run(Command("site", "Evil", url=url))
+            self.assertEqual((ok, detail), (False, "Website address not allowed"))
+            launch.assert_not_called()
+
+    def test_profile_added_after_startup_resolves_without_restart(self):
+        state = {"profile": {"info_cache": {}}}
+        launch = Mock()
+        r = CommandRunner(Mock(), launch=launch, new_window=lambda n, start: (start(), 5)[1],
+                          chrome_state=lambda: state, chrome_path=lambda: CHROME,
+                          known_provider=lambda: command_runner.known_from({"self_name": "ann", "orgs": {"acme": "acme.test"}}, state))
+        self.assertEqual(r.parse("open gmail in ann acme").account, UNKNOWN)
+        state["profile"]["info_cache"]["Profile 9"] = {"user_name": "ann@acme.test"}
+        command = r.parse("open gmail in ann acme")
+        self.assertEqual(command.account, "ann@acme.test")
+        self.assertTrue(r.run(command)[0])
+        self.assertIn("--profile-directory=Profile 9", launch.call_args.args[0])
+
+    def test_account_without_a_chrome_profile_fails(self):
+        launch = Mock()
+        ok, detail = site_runner(launch)[0].run(Command("site", "Gmail", url="https://x.test", account="zed@acme.test"))
+        self.assertEqual((ok, detail), (False, "No Chrome profile for zed@acme.test"))
         launch.assert_not_called()
+
+    def test_site_fails_when_chrome_or_its_state_is_missing(self):
+        launch = Mock()
+        r, _ = site_runner(launch, chrome=None)
+        self.assertEqual(r.run(Command("site", "G", url="https://x.test")), (False, "Couldn't find Chrome"))
+        r, _ = site_runner(launch, state=None)
+        self.assertEqual(r.run(Command("site", "G", url="https://x.test", account="ann@acme.test")),
+                         (False, "No Chrome profile for ann@acme.test"))
+        launch.assert_not_called()
+
+    def test_site_is_a_failure_until_its_window_is_in_front(self):
+        r, _ = site_runner(Mock(), hwnd=None)
+        ok, detail = r.run(Command("site", "Gmail", url="https://x.test", account="ann@acme.test"))
+        self.assertEqual((ok, detail), (False, "Couldn't bring Chrome to front"))
+        self.assertIsNone(r.focused_at)
+        r, _ = site_runner(Mock(side_effect=OSError("no")))
+        self.assertEqual(r.run(Command("site", "G", url="https://x.test")), (False, "Couldn't open G"))
+
+    def test_chrome_is_found_in_app_paths_then_program_files(self):
+        found = command_runner.find_chrome(registry=lambda: r"D:\Chrome\chrome.exe", exists=lambda p: True, env={})
+        self.assertEqual(found, r"D:\Chrome\chrome.exe")
+        env = {"ProgramFiles": r"C:\PF", "ProgramFiles(x86)": r"C:\PF86", "LOCALAPPDATA": r"C:\L"}
+        want = r"C:\PF86\Google\Chrome\Application\chrome.exe"
+        found = command_runner.find_chrome(registry=lambda: None, exists=lambda p: p == want, env=env)
+        self.assertEqual(found, want)
+        self.assertIsNone(command_runner.find_chrome(registry=lambda: None, exists=lambda p: False, env=env))
+        # a registry path that no longer exists is skipped
+        found = command_runner.find_chrome(registry=lambda: r"D:\gone\chrome.exe", exists=lambda p: p == want, env=env)
+        self.assertEqual(found, want)
+
+    def test_profile_folder_comes_from_local_state(self):
+        state = {"profile": {"info_cache": {"Default": {"user_name": "A@x.test"}, "Profile 2": {"user_name": "b@x.test"},
+                                            "Profile 3": {}}}}
+        self.assertEqual(command_runner.chrome_profile(state, "a@X.test"), "Default")
+        self.assertEqual(command_runner.chrome_profile(state, "b@x.test"), "Profile 2")
+        self.assertIsNone(command_runner.chrome_profile(state, "c@x.test"))
+        self.assertIsNone(command_runner.chrome_profile(None, "a@x.test"))
+        self.assertIsNone(command_runner.chrome_profile({"profile": 3}, "a@x.test"))
+
+    def test_saved_sites_reach_the_parser_live(self):
+        sites = {}
+        r = CommandRunner(Mock(), sites_provider=lambda: sites)
+        self.assertIsNone(r.parse("open acme board"))
+        sites["Acme board"] = "https://board.example.com"
+        self.assertEqual(r.parse("open acme board").url, "https://board.example.com")
+        self.assertEqual(r.parse("open github").name, "GitHub")  # built-ins stay
 
     def test_success_only_when_the_window_is_in_front(self):
         focus = Mock(return_value=True)

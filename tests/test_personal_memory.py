@@ -79,6 +79,84 @@ class PersonalMemoryTests(unittest.TestCase):
             self.assertIsNone(PersonalMemory(path).snippet_for("my meeting link"))
             self.assertEqual(PersonalMemory(path).style_for("notepad.exe"), "standard")
 
+    def test_saved_websites_add_list_delete_and_persist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory.json"
+            memory = PersonalMemory(path)
+            memory.add_site("Acme board", "https://board.example.com/#home")
+            memory.add_site("acme BOARD", "http://board.example.com/new")  # same name replaces
+            self.assertEqual(PersonalMemory(path).list_sites(),
+                             [{"name": "acme BOARD", "url": "http://board.example.com/new"}])
+            memory.delete_site("ACME board")
+            self.assertEqual(PersonalMemory(path).list_sites(), [])
+
+    def test_hand_edited_sites_with_a_bad_address_are_dropped_on_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory.json"
+            path.write_text(json.dumps({"sites": [
+                {"name": "evil", "url": "--disable-web-security"},
+                {"name": "no url"}, "junk",
+                {"name": "ok", "url": "https://example.com"}]}), encoding="utf-8")
+            self.assertEqual(PersonalMemory(path).list_sites(), [{"name": "ok", "url": "https://example.com"}])
+
+    def test_bad_website_is_rejected_and_nothing_saved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            for name, url in [("Acme board", "board.example.com"), ("Acme board", "javascript:alert(1)"),
+                              ("Acme board", "https://"), ("  ", "https://example.com")]:
+                with self.assertRaises(ValueError):
+                    memory.add_site(name, url)
+            self.assertEqual(memory.list_sites(), [])
+
+    def test_website_address_limits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            long_url = "https://example.com/" + "a" * 2040
+            bad = [long_url, "https://example.com/a\x00b", "https://example.com/a\x1fb", "https://example.com/a\x7fb",
+                   "https://example.com/a\x85b", "https://example.com/a b", "https://example.com/a b",
+                   'https://example.com/a"b', "ftp://example.com"]
+            for url in bad:
+                with self.subTest(url[:40]), self.assertRaises(ValueError):
+                    memory.add_site("Acme board", url)
+            memory.add_site("Acme board", "https://example.com/" + "a" * (2048 - 20))  # exactly 2048 is fine
+            self.assertEqual(len(memory.list_sites()), 1)
+
+    def test_website_name_needs_a_latin_letter_or_digit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory.json"
+            memory = PersonalMemory(path)
+            for name in ("ÉÉ", "日本語"):
+                with self.subTest(name), self.assertRaises(ValueError):
+                    memory.add_site(name, "https://example.com")
+            path.write_text(json.dumps({"sites": [{"name": "ÉÉ", "url": "https://example.com"}]}), encoding="utf-8")
+            self.assertEqual(PersonalMemory(path).list_sites(), [])
+
+    def test_website_cannot_take_an_app_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            for name in ("Slack", "slack", "T3 Code", "claude code", "WHATSAPP"):
+                with self.subTest(name), self.assertRaisesRegex(ValueError, "app"):
+                    memory.add_site(name, "https://example.com")
+            self.assertEqual(memory.list_sites(), [])
+
+    def test_old_memory_file_without_sites_loads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "memory.json"
+            path.write_text('{"corrections": [], "snippets": [{"cue": "a", "text": "b"}]}', encoding="utf-8")
+            memory = PersonalMemory(path)
+            self.assertEqual(memory.list_sites(), [])
+            memory.add_site("Acme board", "https://board.example.com")
+            self.assertEqual(PersonalMemory(path).list_sites(), [{"name": "Acme board", "url": "https://board.example.com"}])
+            self.assertEqual(PersonalMemory(path).snippet_for("a"), "b")
+
+    def test_saved_website_names_feed_command_words_only(self):
+        from voxkey_app import command_words
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            memory.add_site("Acme board", "https://board.example.com")
+            self.assertEqual(command_words({"command_words": ["Brightfern", 5]}, memory), ["Brightfern", "Acme board"])
+            self.assertEqual(command_words({}, memory), ["Acme board"])
+
 
 if __name__ == "__main__":
     unittest.main()

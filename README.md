@@ -44,6 +44,8 @@ Hold the hotkey and start with "open" to run a command instead of typing. Everyt
 
 - Apps: "open Slack", "open T3 Code", "open Claude", "open ChatGPT", "open WhatsApp".
 - Search inside an app: "open the design channel in Slack", "open the Sam chat in WhatsApp", "open the release thread in T3 Code". VoxKey opens the app, types the name into its search box, and presses Enter. In T3 Code it shows the results without pressing Enter.
+- Websites: "open YouTube", "open YouTube Music", "open GitHub", "open Gmail", "open Google Meet". VoxKey opens the address in a new Chrome window. Add your own on **Personal memory → Websites**: a spoken name and an `http(s)://` address, for example "alex board" = `https://board.example.com`. Then "open alex board" opens it. A saved name that matches an app name is refused, and an app name wins over a website with the same name.
+- Chrome account: add an account phrase to pick the Chrome profile whose signed-in email matches. "open Gmail in my account" and plain "open Gmail" both use `default_account`. "open Gmail in Sam account" uses the profile of the one email whose leading letters are "sam" (like sam@example.com). Add an org word from `orgs` ("open Gmail in my work account", "open Gmail in Sam work account") to pick `<person>@<that org's domain>`. VoxKey reads the profile emails from Chrome's `Local State` file; there is nothing to set up. If `default_account` is empty or has no Chrome profile, VoxKey adds no profile and Chrome uses its own choice.
 - Terminal: "open the terminal in D drive", "open Claude Code in myproject" (finds a folder by name and starts `claude` there), "open the terminal in E drive, clients folder, demo, and run Claude Code".
 
 Add personal names to `%LOCALAPPDATA%\VoxKey\settings.json`. All keys are optional; the values below are examples.
@@ -59,11 +61,13 @@ Add personal names to `%LOCALAPPDATA%\VoxKey\settings.json`. All keys are option
 }
 ```
 
-`command_words` are extra names the speech model listens for on "open ..." sentences only. `folder_roots` limits where folders are searched; by default VoxKey indexes every fixed drive except the system drive, in memory, and refreshes the list every 15 minutes. `workspaces` lists Slack workspace names. `self_name`, `default_account`, `orgs`, and `workspaces` are read once at startup, so restart VoxKey after changing them. `command_words` is read live. `folder_roots` is read when the folder list is rebuilt (every 15 minutes), so restart VoxKey to apply a change now.
+`command_words` are extra names the speech model listens for on "open ..." sentences only. `folder_roots` limits where folders are searched; by default VoxKey indexes every fixed drive except the system drive, in memory, and refreshes the list every 15 minutes. `workspaces` lists Slack workspace names. These settings, saved websites, and Chrome's profile list are read again on every command, so changes apply without a restart. `folder_roots` is read when the folder list is rebuilt (every 15 minutes), so restart VoxKey to apply a change now.
 
 Safety: VoxKey types only into a search box it has confirmed through Windows UI Automation, and only while the target window is in front. It never types into message boxes and never sends messages.
 
-Limits: switching Slack workspaces is not supported yet, and websites and Chrome profiles ("open YouTube in my work account") are not supported yet.
+Errors: "Account not clear" means the words you said match no one profile, or more than one. "No Chrome profile for <email>" means Chrome has no profile signed in with that email. VoxKey refuses a saved website whose address does not start with `http://` or `https://`.
+
+Limits: switching Slack workspaces is not supported yet. VoxKey brings to the front the newest Chrome window; if another Chrome window opens at the same moment it can pick that one.
 
 ## Limitations
 

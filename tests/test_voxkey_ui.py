@@ -144,7 +144,7 @@ class VoxKeyUiTests(unittest.TestCase):
             shell.show_memory()
 
             tabs = shell.memory_dialog.findChild(QTabWidget)
-            self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ["Corrections", "Snippets", "App styles"])
+            self.assertEqual([tabs.tabText(i) for i in range(tabs.count())], ["Corrections", "Snippets", "Websites", "App styles"])
             fields = shell.memory_dialog.findChildren(QLineEdit)
             next(field for field in fields if field.placeholderText() == "Phrase VoxKey heard").setText("vox key")
             next(field for field in fields if field.placeholderText() == "What you intended").setText("VoxKey")
@@ -163,6 +163,60 @@ class VoxKeyUiTests(unittest.TestCase):
             shell.close()
             app.quit()
 
+
+    def test_websites_tab_saves_and_deletes_a_site(self):
+        from unittest.mock import Mock
+        from PySide6.QtWidgets import QLineEdit, QListWidget, QPushButton, QTabWidget
+        from personal_memory import PersonalMemory
+        from voxkey_ui import VoxKeyShell, create_qt_application
+
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            runtime = Mock()
+            runtime.load_settings.return_value = {"sounds_enabled": False, "vocabulary": []}
+            runtime.logger.return_value = Mock()
+            app = create_qt_application()
+            shell = VoxKeyShell(Mock(), runtime, lambda: None, memory=memory)
+            shell.show_memory()
+            dialog = shell.memory_dialog
+            tabs = dialog.findChild(QTabWidget)
+            self.assertIn("Websites", [tabs.tabText(i) for i in range(tabs.count())])
+            fields = dialog.findChildren(QLineEdit)
+            next(f for f in fields if f.placeholderText().startswith("Spoken name")).setText("acme board")
+            url = next(f for f in fields if f.placeholderText().startswith("Web address"))
+            url.setText("https://board.example.com/#home")
+            next(b for b in dialog.findChildren(QPushButton) if b.text() == "Save website").click()
+            self.assertEqual(memory.list_sites(), [{"name": "acme board", "url": "https://board.example.com/#home"}])
+            sites = next(w for w in dialog.findChildren(QListWidget) if w.count() and w.item(0).text() == "acme board")
+            sites.setCurrentRow(0)
+            next(b for b in dialog.findChildren(QPushButton) if b.text() == "Delete selected website").click()
+            self.assertEqual(memory.list_sites(), [])
+            shell.close()
+            app.quit()
+
+    def test_websites_tab_rename_replaces_the_selected_site(self):
+        from unittest.mock import Mock
+        from PySide6.QtWidgets import QLineEdit, QListWidget, QPushButton
+        from personal_memory import PersonalMemory
+        from voxkey_ui import VoxKeyShell, create_qt_application
+
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersonalMemory(Path(directory) / "memory.json")
+            memory.add_site("acme board", "https://board.example.com")
+            runtime = Mock()
+            runtime.load_settings.return_value = {"sounds_enabled": False, "vocabulary": []}
+            runtime.logger.return_value = Mock()
+            app = create_qt_application()
+            shell = VoxKeyShell(Mock(), runtime, lambda: None, memory=memory)
+            shell.show_memory()
+            dialog = shell.memory_dialog
+            sites = next(w for w in dialog.findChildren(QListWidget) if w.count() and w.item(0).text() == "acme board")
+            sites.setCurrentRow(0)
+            next(f for f in dialog.findChildren(QLineEdit) if f.placeholderText().startswith("Spoken name")).setText("acme tasks")
+            next(b for b in dialog.findChildren(QPushButton) if b.text() == "Save website").click()
+            self.assertEqual(memory.list_sites(), [{"name": "acme tasks", "url": "https://board.example.com"}])
+            shell.close()
+            app.quit()
 
 if __name__ == "__main__":
     unittest.main()
