@@ -68,6 +68,22 @@ class TextFormatterTests(unittest.TestCase):
 
         self.assertIn("\n\nFinal thought.", polished)
 
+    def test_actually_no_inside_a_sentence_is_not_a_backtrack(self):
+        formatter = TextFormatter()
+        self.assertEqual(formatter.polish("There's actually no reason to wait"), "There's actually no reason to wait.")
+        self.assertEqual(formatter.polish("I actually no longer need it"), "I actually no longer need it.")
+
+    def test_format_words_inside_a_phrase_are_not_commands(self):
+        formatter = TextFormatter()
+        self.assertEqual(formatter.polish("We launched a new line of products"), "We launched a new line of products.")
+        self.assertEqual(formatter.polish("Is that the question mark on my keyboard"), "Is that the question mark on my keyboard.")
+
+    def test_vocabulary_term_with_backslash_does_not_crash(self):
+        self.assertEqual(TextFormatter(lambda: [r"C:\Users"]).polish(r"open c:\users now"), r"Open C:\Users now.")
+
+    def test_bullet_command_followed_by_punctuation_keeps_clean_bullet(self):
+        self.assertEqual(TextFormatter().polish("buy milk bullet point, eggs"), "Buy milk\n\u2022 Eggs.")
+
 
 if __name__ == "__main__":
     unittest.main()

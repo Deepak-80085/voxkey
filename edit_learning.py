@@ -60,11 +60,14 @@ def edited_phrase(before: str, after: str, pasted: str) -> tuple[str, str] | Non
 def safe_to_learn(heard: str, intended: str, preferred=()) -> bool:
     """Auto-apply close word spellings; leave broad rewrites for review."""
     if any(char.isupper() for char in intended[1:]):
-        return True
+        return " " not in intended and SequenceMatcher(
+            None, heard.casefold().replace(" ", ""), intended.casefold()).ratio() >= 0.6
     if heard.casefold() == intended.casefold():
         return intended in preferred
     if intended.casefold().startswith(heard.casefold()) and intended[len(heard):].casefold() in {"s", "d", "ed", "ing"}:
         return False
+    if sorted(heard.casefold()) == sorted(intended.casefold()) or max(len(heard), len(intended)) <= 4:
+        return False  # transposed or short words are often two real words (form/from)
     return (heard.isalpha() and intended.isalpha()
             and min(len(heard), len(intended)) >= 3
             and SequenceMatcher(None, heard.casefold(), intended.casefold()).ratio() >= 0.6)

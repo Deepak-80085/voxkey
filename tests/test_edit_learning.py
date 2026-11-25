@@ -29,6 +29,16 @@ class EditLearningTests(unittest.TestCase):
         self.assertFalse(safe_to_learn("use", "used"))
         self.assertFalse(safe_to_learn("good", "bad"))
 
+    def test_capital_shortcut_only_for_one_close_word(self):
+        self.assertTrue(safe_to_learn("iphone", "iPhone"))
+        self.assertFalse(safe_to_learn("hello", "Hello World"))
+        self.assertFalse(safe_to_learn("cat", "McDonald"))
+
+    def test_swap_between_real_words_is_only_a_suggestion(self):
+        self.assertFalse(safe_to_learn("form", "from"))
+        self.assertFalse(safe_to_learn("then", "than"))
+        self.assertTrue(safe_to_learn("cash", "cache"))
+
     def test_reviewed_ambiguous_edit_persists_before_it_applies(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "memory.json"
