@@ -15,7 +15,7 @@ _SPOKEN_FILLER_RE = re.compile(r"(?i)(?<!\w)(?:um+|uh+|erm+)(?!\w)[,;:!?]?[ \t]*
 _BACKTRACK_RE = re.compile(
     r"(?i)\b(?P<old>[^\W_]+)(?:,\s*|\.{2,}\s*|…\s*)(?:actually(?:\s+no)?|I mean|sorry)\s+(?P<new>[^\W_]+)\b"
 )
-_EXPLICIT_BACKTRACK_RE = re.compile(r"(?i)\b[^\W_]+\s+actually no\s+([^\W_]+)\b")
+_EXPLICIT_BACKTRACK_RE = re.compile(r"(?i)\b(?P<old>[^\W_]+)\s+actually no\s+(?P<new>[^\W_]+)\b")
 _NUMBER_WORDS = set("zero one two three four five six seven eight nine ten eleven twelve".split())
 _WEEKDAYS = set("monday tuesday wednesday thursday friday saturday sunday".split())
 _FORMAT_COMMAND_RE = re.compile(
@@ -23,6 +23,7 @@ _FORMAT_COMMAND_RE = re.compile(
     r"bullet point|question mark|exclamation point|full stop)\b",
     re.IGNORECASE,
 )
+_NOT_COMMAND_BEFORE = set("a an the this that these those my our your his her their its new product".split())
 _FORMAT_COMMANDS = {
     "start a new paragraph": "\n\n",
     "new paragraph": "\n\n",
@@ -53,13 +54,21 @@ def apply_spoken_corrections(text: str) -> str:
         return match.group()
 
     text = _BACKTRACK_RE.sub(replace, text)
-    return _EXPLICIT_BACKTRACK_RE.sub(lambda match: match.group(1), text)
+    return _EXPLICIT_BACKTRACK_RE.sub(replace, text)
+
+
+def _format_command(match) -> str:
+    # Words that make "new line", "question mark" etc. part of a phrase, not a command.
+    before = match.string[:match.start()].split()
+    after = match.string[match.end():].split()
+    if (before and before[-1].casefold() in _NOT_COMMAND_BEFORE) or (after and after[0].casefold() == "of"):
+        return match.group()
+    return _FORMAT_COMMANDS[match.group().casefold()]
 
 
 def format_spoken_commands(text: str) -> str:
-    formatted = _FORMAT_COMMAND_RE.sub(
-        lambda match: _FORMAT_COMMANDS[match.group().casefold()], text
-    )
+    formatted = _FORMAT_COMMAND_RE.sub(_format_command, text)
+    formatted = re.sub(r"•[ \t,.;:]*", "• ", formatted)
     formatted = re.sub(r"[ \t]+([?.!])", r"\1", formatted)
     return re.sub(r"[ \t]*\n[ \t]*", "\n", formatted).strip()
 
@@ -95,7 +104,7 @@ def _safe_format(text: str) -> str:
 
 def _restore_vocabulary_casing(text: str, terms: list[str]) -> str:
     for term in sorted(normalize_vocabulary(terms), key=len, reverse=True):
-        text = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)", term, text, flags=re.IGNORECASE)
+        text = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)", lambda _: term, text, flags=re.IGNORECASE)
     return text
 
 

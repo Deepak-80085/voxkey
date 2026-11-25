@@ -12,6 +12,8 @@ from tempfile import NamedTemporaryFile
 
 class PersonalMemory:
     STYLES = ("standard", "minimal", "bullet notes")
+    _REQUIRED = {"corrections": ("heard", "intended"), "suggestions": ("heard", "intended"),
+                 "snippets": ("cue", "text"), "history": ("text",)}
 
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -24,6 +26,9 @@ class PersonalMemory:
                 for key in self._data:
                     if isinstance(loaded.get(key), type(self._data[key])):
                         self._data[key] = loaded[key]
+                for key, fields in self._REQUIRED.items():
+                    self._data[key] = [item for item in self._data[key] if isinstance(item, dict)
+                                       and all(isinstance(item.get(f), str) for f in fields)]
         except FileNotFoundError:
             pass
         except (OSError, ValueError) as exc:
