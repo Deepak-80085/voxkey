@@ -92,6 +92,13 @@ class SpeechModelTests(unittest.TestCase):
         self.assertTrue(prompt.startswith("English dictation. Terms: Zudio, "))
         self.assertIn("Slack", prompt)
 
+    def test_command_pass_keeps_all_user_vocabulary_when_many_site_names_are_saved(self):
+        vocab = [f"Term{i}" for i in range(80)]
+        sites = [f"Site{i}" for i in range(40)]
+        prompt = self._prompt(vocab, command_words=sites, command_terms=True)
+        for word in vocab:
+            self.assertIn(word, prompt)
+
     def test_gpu_load_failure_retries_same_small_en_model_on_cpu(self):
         cpu_model = Mock()
         loader = Mock(side_effect=[RuntimeError("GPU unavailable"), cpu_model])

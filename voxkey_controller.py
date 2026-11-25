@@ -129,7 +129,8 @@ class VoxKeyController:
         try:
             self._emit("transcribing", AppState.TRANSCRIBING)
             self._set_state(AppState.TRANSCRIBING)
-            transcript = self.speech.transcribe(audio_path)
+            # One pass for everything: the prompt always carries the command names (ranks "open ..." right).
+            transcript = self.speech.transcribe(audio_path, command_terms=bool(self.commands))
             transcribe_finished = self.clock()
             transcribe_ms = round((transcribe_finished - started) * 1000)
             if self.logger:
@@ -151,25 +152,7 @@ class VoxKeyController:
 
             outcome = None
             if self.commands and _OPEN.match(transcript):
-                # Only "open ..." sentences get a second pass with the command names in the prompt.
-                second_started = time.perf_counter()
-                try:
-                    second = self.speech.transcribe(audio_path, command_terms=True)
-                except Exception:
-                    second = None  # keep the first transcript; it is typed as before
-                    if self.logger:
-                        self.logger.exception("Command second pass failed; typing the first transcript")
-                if second is not None:
-                    if self.memory:
-                        try:
-                            second = self.memory.correct(second, app)
-                        except Exception:
-                            if self.logger:
-                                self.logger.exception("Local correction memory unavailable")
-                    if self.logger:
-                        self.logger.info("Command second pass; elapsed_ms=%d",
-                                         round((time.perf_counter() - second_started) * 1000))
-                    outcome = self._run_command(second, transcribe_finished, released_at)
+                outcome = self._run_command(transcript, transcribe_finished, released_at)
             if outcome is not None:
                 self._set_state(AppState.READY)
                 return outcome

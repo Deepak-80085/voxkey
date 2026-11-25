@@ -69,7 +69,7 @@ class SpeechModelManager:
     ):
         self.runtime = runtime
         self.vocabulary_provider = vocabulary_provider or (lambda: [])
-        self.command_words_provider = command_words_provider or (lambda: [])  # second "open ..." pass only
+        self.command_words_provider = command_words_provider or (lambda: [])  # added to the prompt when command_terms=True
         self.model_loader = model_loader
         self.downloader = downloader
         self.cuda_checker = cuda_checker or self._missing_cuda_runtime
@@ -188,7 +188,7 @@ class SpeechModelManager:
         self.logger.info("Transcribing with device=%s", self.device)
         words = self.vocabulary_provider()
         if command_terms:
-            words = [*self.command_words_provider(), *words]
+            words = [*words, *self.command_words_provider()]  # user words first: the 90-word cap trims command names
         segments, _ = self.model.transcribe(
             _read_recording(audio_path),
             language="en",

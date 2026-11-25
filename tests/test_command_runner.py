@@ -3,7 +3,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import command_runner
 from command_runner import CommandRunner, PynputKeys, known_from
@@ -31,9 +31,9 @@ def site_runner(launch, state=STATE, chrome=CHROME, hwnd=77):
                          chrome_state=lambda: state, chrome_path=lambda: chrome), new_window
 
 
-def runner(apps=APPS, launch=None, focus=None):
-    return CommandRunner(Mock(), start_apps=lambda: apps, launch=launch or Mock(),
-                         focus=focus or Mock(return_value=True))
+def runner(apps=APPS, launch=None, focus=None, has_window=lambda name: False):
+    return CommandRunner(Mock(), start_apps=lambda: apps, launch=launch or Mock(), has_window=has_window,
+                         focus=focus or Mock(side_effect=lambda name, timeout=None: timeout != 0))
 
 
 class CommandRunnerTests(unittest.TestCase):
@@ -197,9 +197,30 @@ class CommandRunnerTests(unittest.TestCase):
         focus = Mock(return_value=True)
         ok, _ = runner(focus=focus).run(Command("app", "Slack"))
         self.assertTrue(ok)
-        focus.assert_called_once_with("Slack")
+        focus.assert_called_once_with("Slack", timeout=0)
         ok, detail = runner(focus=Mock(return_value=False)).run(Command("app", "Slack"))
         self.assertEqual((ok, detail), (False, "Couldn't bring Slack to front"))
+
+    def test_existing_window_is_focused_without_launching(self):
+        launch, focus = Mock(), Mock(return_value=True)
+        ok, detail = runner(launch=launch, focus=focus).run(Command("app", "Slack"))
+        self.assertEqual((ok, detail), (True, "Opened Slack"))
+        focus.assert_called_once_with("Slack", timeout=0)
+        launch.assert_not_called()
+
+    def test_window_that_will_not_focus_is_not_launched_again(self):
+        launch, focus = Mock(), Mock(return_value=None)
+        ok, detail = runner(launch=launch, focus=focus, has_window=lambda name: True).run(Command("app", "Slack"))
+        self.assertEqual((ok, detail), (False, "Couldn't bring Slack to front"))
+        launch.assert_not_called()
+        focus.assert_called_once_with("Slack", timeout=0)
+
+    def test_missing_window_is_launched_then_waited_for(self):
+        launch, focus = Mock(), Mock(side_effect=[None, 1])
+        ok, _ = runner(launch=launch, focus=focus).run(Command("app", "Slack"))
+        self.assertTrue(ok)
+        launch.assert_called_once()
+        self.assertEqual(focus.call_args_list, [call("Slack", timeout=0), call("Slack")])
 
     def test_slow_start_apps_never_blocks_a_command_for_long(self):
         release = threading.Event()

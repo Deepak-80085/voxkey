@@ -9,6 +9,8 @@ from ctypes import wintypes
 from pathlib import Path
 
 # app name (lower case) -> (exe name, title word). WhatsApp runs as a Chrome app window, so it is found by its exact title.
+POLL_S = 0.05  # how often to look for the window...
+SLOW_POLL_S = 0.25  # ...and after the first second
 WINDOWS = {
     "slack": ("slack.exe", None),
     "t3 code": ("t3 code (nightly).exe", None),
@@ -88,9 +90,25 @@ def list_windows(exe: str | None, title_word: str | None = None, limit: int | No
     return found
 
 
-def find_window(exe: str | None, title_word: str | None = None) -> int | None:
-    found = list_windows(exe, title_word, limit=1)
-    return found[0] if found else None
+def _area(hwnd: int) -> int:
+    rect = wintypes.RECT()
+    _user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    return (rect.right - rect.left) * (rect.bottom - rect.top)
+
+
+def find_window(exe: str | None, title_word: str | None = None, area=_area) -> int | None:
+    """The app's largest window: its main window, not a side window such as a Slack huddle."""
+    found = list_windows(exe, title_word)
+    return max(found, key=area) if found else None
+
+
+def has_window(name: str) -> bool:
+    exe, word = WINDOWS.get(name.casefold(), (f"{name.casefold()}.exe", None))
+    return find_window(exe, word) is not None
+
+
+def _poll(started: float, now: float) -> float:
+    return POLL_S if now - started < 1.0 else SLOW_POLL_S
 
 
 def bring_to_front(hwnd: int, timeout: float = 1.5) -> bool:
@@ -127,14 +145,15 @@ def focus_app(name: str, find=find_window, bring=bring_to_front, timeout: float 
               sleep=time.sleep, clock=time.monotonic) -> int | None:
     """Wait up to `timeout` s for the app's window, then bring it to the front. Its handle only when it is."""
     exe, word = WINDOWS.get(name.casefold(), (f"{name.casefold()}.exe", None))
-    deadline = clock() + timeout
+    started = clock()
+    deadline = started + timeout
     while True:
         hwnd = find(exe, word)
         if hwnd:
             return hwnd if bring(hwnd) else None
         if clock() >= deadline:
             return None
-        sleep(0.25)
+        sleep(_poll(started, clock()))
 
 
 def focus_new(name: str, start, find=list_windows, bring=bring_to_front, timeout: float = 10.0,
@@ -144,14 +163,15 @@ def focus_new(name: str, start, find=list_windows, bring=bring_to_front, timeout
     exe, word = WINDOWS.get(name.casefold(), (f"{name.casefold()}.exe", None))
     before = set(find(exe, word))
     start()
-    deadline = clock() + timeout
+    started = clock()
+    deadline = started + timeout
     while True:
         new = [h for h in find(exe, word) if h not in before]
         if new:
             return new[0] if bring(new[0]) else None
         if clock() >= deadline:
             return None
-        sleep(0.25)
+        sleep(_poll(started, clock()))
 
 
 EDIT_TYPES = (50004, 50003)  # UIA Edit, ComboBox

@@ -12,7 +12,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from window_focus import UiaSearchBox, focus_app, focus_new, is_foreground
+from window_focus import UiaSearchBox, focus_app, focus_new, has_window, is_foreground
 from voice_commands import AMBIGUOUS, UNKNOWN, Command, Known, parse
 
 CHROME_STATE = Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data" / "Local State"
@@ -229,8 +229,10 @@ class CommandRunner:
                  launch=subprocess.Popen, focus=focus_app, wait: float = 0.5, retry_delay: float = 5.0,
                  keys=None, in_front=is_foreground, pause=time.sleep, box=None, clock=time.monotonic,
                  new_window=focus_new, drive_root=drive_root, folder_roots=lambda: (), index_roots=None,
-                 sites_provider=lambda: {}, chrome_state=read_chrome_state, chrome_path=find_chrome, known_provider=None):
+                 sites_provider=lambda: {}, chrome_state=read_chrome_state, chrome_path=find_chrome, known_provider=None,
+                 has_window=has_window):
         self.logger = logger
+        self._has_window = has_window
         self.known = known or Known()
         self._known_provider = known_provider  # rebuilt on every command: new Chrome profiles and settings apply without restart
         self._chrome_state, self._chrome_path = chrome_state, chrome_path
@@ -469,6 +471,12 @@ class CommandRunner:
         app_id = self._app_id(name)
         if not app_id:
             return False, f"Couldn't open {name}", None
+        hwnd = self._focus(name, timeout=0)  # already open: just bring it to the front
+        if hwnd:
+            self.focused_at = self._clock()
+            return True, f"Opened {name}", hwnd
+        if self._has_window(name):  # open but will not take focus: launching again would not help
+            return False, f"Couldn't bring {name} to front", None
         try:
             self._launch(["explorer.exe", rf"shell:AppsFolder\{app_id}"])
         except OSError:

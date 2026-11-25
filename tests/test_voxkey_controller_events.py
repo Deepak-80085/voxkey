@@ -125,7 +125,7 @@ class CommandControllerTests(unittest.TestCase):
         paste.assert_called_once()
 
 
-class CommandSecondPassTests(unittest.TestCase):
+class CommandSinglePassTests(unittest.TestCase):
     def _make(self, transcripts, parsed):
         speech, writer, paste, events = Mock(), Mock(), Mock(return_value=True), EventBus()
         speech.health_check.return_value = Mock(ready=True, reason=None)
@@ -138,33 +138,33 @@ class CommandSecondPassTests(unittest.TestCase):
         controller.start()
         return controller, speech, writer, paste, commands
 
-    def test_normal_dictation_is_transcribed_once_with_no_command_terms(self):
+    def test_every_utterance_is_transcribed_once_with_command_terms(self):
         controller, speech, _, paste, commands = self._make(["Hello good morning."], None)
         controller.process_audio(Path("s.wav"))
-        speech.transcribe.assert_called_once_with(Path("s.wav"))
+        speech.transcribe.assert_called_once_with(Path("s.wav"), command_terms=True)
         commands.parse.assert_not_called()
         paste.assert_called_once()
 
-    def test_open_sentence_is_transcribed_again_with_command_terms_and_second_text_is_parsed(self):
-        controller, speech, _, paste, commands = self._make(["  Open, slack.", "Open Slack."], "CMD")
+    def test_open_sentence_is_parsed_from_the_single_pass(self):
+        controller, speech, _, paste, commands = self._make(["Open Slack."], "CMD")
         controller.process_audio(Path("s.wav"))
-        self.assertEqual(speech.transcribe.call_args_list,
-                         [call(Path("s.wav")), call(Path("s.wav"), command_terms=True)])
+        speech.transcribe.assert_called_once()
         commands.parse.assert_called_once_with("Open Slack.")
+        commands.run.assert_called_once_with("CMD")
         paste.assert_not_called()
 
-    def test_second_text_not_a_command_types_the_first_transcript(self):
-        controller, _, writer, paste, commands = self._make(["Open the door.", "Open the store."], None)
+    def test_non_command_text_is_pasted_unchanged(self):
+        controller, _, writer, paste, commands = self._make(["Open the door."], None)
         controller.process_audio(Path("s.wav"))
         writer.polish.assert_called_once_with("Open the door.")
         paste.assert_called_once()
 
-    def test_second_pass_error_types_the_first_transcript(self):
-        controller, speech, writer, paste, commands = self._make(["Open the door.", RuntimeError("boom")], None)
+    def test_command_error_still_types_the_text(self):
+        controller, _, writer, paste, commands = self._make(["Open the door."], None)
+        commands.parse.side_effect = RuntimeError("boom")
         self.assertTrue(controller.process_audio(Path("s.wav")))
         writer.polish.assert_called_once_with("Open the door.")
         paste.assert_called_once()
-        commands.parse.assert_not_called()
 
 
 if __name__ == "__main__":

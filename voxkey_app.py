@@ -393,7 +393,7 @@ def dispatch_ui_events(events: EventBus, shell: VoxKeyShell) -> None:
 
 
 def command_words(settings: dict, memory: PersonalMemory) -> list[str]:
-    """Names for the second "open ..." Whisper pass only: settings words plus saved website names."""
+    """Names for the Whisper prompt: settings words plus saved website names."""
     words = settings.get("command_words")
     return [*([w for w in words if isinstance(w, str)] if isinstance(words, list) else []),
             *[s["name"] for s in memory.list_sites()]]
